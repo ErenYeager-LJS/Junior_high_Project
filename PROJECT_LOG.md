@@ -53,6 +53,17 @@ platformio run -e slave
 
 不带 `-e` 执行 `platformio run` 时，因为 `default_envs = master, slave`，PlatformIO 会把两个固件都编译一遍。
 
+两个板同时连接时，执行 `platformio run --target upload` 会按 `default_envs` 的顺序处理两个环境：先用 `DEVICE_ROLE_MASTER=1` 生成主机固件并写入 COM10，再用 `DEVICE_ROLE_MASTER=0` 生成从机固件并写入 COM11。PlatformIO 不会自动判断板子的角色，角色完全由环境标志和端口绑定决定。
+
+第一次下载建议分开执行：
+
+```powershell
+platformio run -e master --target upload
+platformio run -e slave --target upload
+```
+
+下载前应在 Windows 设备管理器或 PlatformIO Devices 中确认主机仍是 COM10、从机仍是 COM11。更换 USB 插口或驱动后，COM 编号可能变化；端口写反会把两块板的角色固件烧反。
+
 ## 2026-09-04
 
 ### 当前功能
