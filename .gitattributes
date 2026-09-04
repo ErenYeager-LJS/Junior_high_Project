@@ -1,0 +1,9 @@
+* text=auto
+*.html text eol=lf working-tree-encoding=UTF-8
+*.css text eol=lf working-tree-encoding=UTF-8
+*.js text eol=lf working-tree-encoding=UTF-8
+*.json text eol=lf working-tree-encoding=UTF-8
+*.md text eol=lf working-tree-encoding=UTF-8
+*.cpp text eol=lf working-tree-encoding=UTF-8
+*.h text eol=lf working-tree-encoding=UTF-8
+*.ini text eol=lf working-tree-encoding=UTF-8

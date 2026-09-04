@@ -1,0 +1,11 @@
+[
+  {
+    "date": "2026-09-03",
+    "macrostructure": "Workbench",
+    "theme": "Coral",
+    "enrichment": "none",
+    "nav": "N9",
+    "footer": "Ft2",
+    "brief": "ESP8266 IO4 live status dashboard"
+  }
+]

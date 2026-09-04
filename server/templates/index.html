@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#f7f4f1">
+    <title>IO4 实时状态</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <script src="{{ url_for('static', filename='app.js') }}" defer></script>
+  </head>
+  <body data-online="false" data-led="unknown">
+    <header class="nav-edge">
+      <div class="wordmark">ESP8266 / IO4</div>
+      <div class="connection" id="connection" role="status" aria-live="polite">
+        <span class="connection__dot" aria-hidden="true"></span>
+        <span id="connectionText">等待设备</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="workbench" aria-labelledby="pageTitle">
+        <div class="workbench__heading">
+          <p class="context">Flask 状态台</p>
+          <h1 id="pageTitle">IO4 实时状态</h1>
+          <p class="lede">页面接收 ESP8266 的状态上报，显示 GPIO4 当前电平。</p>
+        </div>
+
+        <div class="device-panel">
+          <div class="led-stage" aria-labelledby="ledLabel">
+            <div class="led" id="ledVisual" aria-hidden="true">
+              <span class="led__core"></span>
+            </div>
+            <div class="led-copy">
+              <p class="field-label" id="ledLabel">GPIO4</p>
+              <p class="led-state" id="ledState">等待上报</p>
+              <div class="led-controls" aria-label="GPIO4 远程控制">
+                <button type="button" data-led-action="on">打开</button>
+                <button type="button" data-led-action="off">关闭</button>
+                <button type="button" data-led-action="toggle">翻转</button>
+              </div>
+              <p class="command-status" id="commandStatus" role="status" aria-live="polite"></p>
+            </div>
+          </div>
+
+          <dl class="readings">
+            <div class="reading">
+              <dt>设备地址</dt>
+              <dd id="deviceIp">—</dd>
+            </div>
+            <div class="reading">
+              <dt>Wi-Fi 信号</dt>
+              <dd id="rssi">—</dd>
+            </div>
+            <div class="reading">
+              <dt>运行时间</dt>
+              <dd id="uptime">—</dd>
+            </div>
+            <div class="reading">
+              <dt>最近上报</dt>
+              <dd id="lastSeen">—</dd>
+            </div>
+          </dl>
+        </div>
+      </section>
+
+      <section class="waveform" aria-labelledby="waveformTitle">
+        <div class="section-heading">
+          <h2 id="waveformTitle">A0 实时波形</h2>
+          <p>显示最近 15 秒的 ADC 原始值，量程为 0–1023。</p>
+        </div>
+        <div class="waveform-panel">
+          <div class="chart-wrap">
+            <canvas
+              class="adc-chart"
+              id="adcChart"
+              width="1000"
+              height="320"
+              role="img"
+              aria-label="等待 A0 采样数据"
+            ></canvas>
+          </div>
+          <dl class="adc-stats">
+            <div>
+              <dt>当前值</dt>
+              <dd id="adcCurrent">—</dd>
+            </div>
+            <div>
+              <dt>窗口最小</dt>
+              <dd id="adcMin">—</dd>
+            </div>
+            <div>
+              <dt>窗口最大</dt>
+              <dd id="adcMax">—</dd>
+            </div>
+            <div>
+              <dt>采样率</dt>
+              <dd id="sampleRate">—</dd>
+            </div>
+          </dl>
+        </div>
+      </section>
+
+      <section class="timeline" aria-labelledby="timelineTitle">
+        <div class="section-heading">
+          <h2 id="timelineTitle">最近变化</h2>
+          <p>只记录高低电平切换。</p>
+        </div>
+        <ol class="events" id="events">
+          <li class="events__empty">设备连接后，变化会显示在这里。</li>
+        </ol>
+      </section>
+    </main>
+
+    <footer class="foot-line">
+      <p>ESP8266 · Flask · 本地网络 192.168.124.0/24</p>
+    </footer>
+  </body>
+</html>
