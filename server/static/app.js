@@ -82,7 +82,7 @@ const render = (status) => {
   setText("adcRaw", slave.adc_latest);
   setText("thresholdResult", status.slave_over_threshold ? "超过 0.600 V" : "未超过阈值");
   setText("masterAlert", status.alert_message || "无告警");
-  setText("sampleRate", Number.isFinite(status.sample_rate_hz) ? `${status.sample_rate_hz} Hz` : null);
+  setText("sampleRate", Number.isFinite(status.effective_sample_rate_hz) ? `${status.effective_sample_rate_hz} Hz（目标 ${status.sample_rate_hz}）` : null);
   setText("adcRange", Number.isFinite(status.adc_min) ? `${status.adc_min}–${status.adc_max}` : null);
   waveform = status.waveform || [];
   thresholdRaw = status.threshold_raw;

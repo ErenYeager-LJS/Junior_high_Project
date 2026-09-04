@@ -50,8 +50,16 @@ void appendCommonStatus(String& payload, const char* role, bool ledOn) {
             WiFi.localIP().toString() + "\"";
 }
 
-// 向统一状态接口发送 JSON，成功返回 true。
-bool postStatus(const String& payload) {
+// 用响应 JSON 更新当前设备的控制配置。
+void updateConfig(const String& body, DeviceConfig& config) {
+  config.thresholdEnabled = readBool(body, "threshold_enabled", config.thresholdEnabled);
+  config.manualLed = readBool(body, "manual_led", config.manualLed);
+  config.slaveOverThreshold = readBool(body, "slave_over_threshold", config.slaveOverThreshold);
+  config.thresholdRaw = readUnsigned(body, "threshold_raw", config.thresholdRaw);
+}
+
+// 向统一状态接口发送 JSON，并通过 responseBody 带回响应内容。
+bool postStatus(const String& payload, String& responseBody) {
   if (WiFi.status() != WL_CONNECTED) return false;
   // client 提供 TCP 连接。
   WiFiClient client;
@@ -64,6 +72,7 @@ bool postStatus(const String& payload) {
   http.addHeader("Content-Type", "application/json");
   // code 保存服务端返回的 HTTP 状态码。
   const int code = http.POST(payload);
+  if (code >= 200 && code < 300) responseBody = http.getString();
   http.end();
   return code >= 200 && code < 300;
 }
@@ -89,20 +98,17 @@ bool serverFetchConfig(const char* role, DeviceConfig& config) {
   // body 是 Flask 返回的 JSON 配置文本。
   const String body = http.getString();
   http.end();
-  config.thresholdEnabled = readBool(body, "threshold_enabled", config.thresholdEnabled);
-  config.manualLed = readBool(body, "manual_led", config.manualLed);
-  config.slaveOverThreshold = readBool(body, "slave_over_threshold", config.slaveOverThreshold);
-  config.thresholdRaw = readUnsigned(body, "threshold_raw", config.thresholdRaw);
+  updateConfig(body, config);
   return true;
 }
 
 // 从机把环形缓冲区中的 ADC 数据按时间顺序写入 JSON 后发送。
-bool serverReportSlave(bool ledOn) {
+bool serverReportSlave(bool ledOn, DeviceConfig& config) {
   // payload 保存本次 POST 的完整 JSON 文本。
   String payload;
-  payload.reserve(1800);
+  payload.reserve(3500);
   appendCommonStatus(payload, "slave", ledOn);
-  payload += ",\"sample_interval_ms\":" + String(ADC_SAMPLE_INTERVAL_MS) + ",\"adc_samples\":[";
+  payload += ",\"sample_interval_us\":" + String(ADC_SAMPLE_INTERVAL_US) + ",\"adc_samples\":[";
   // count 固定本次要发送的数量，避免循环期间变化。
   const size_t count = adcCount();
   // index 表示当前追加的是第几个采样值。
@@ -111,18 +117,28 @@ bool serverReportSlave(bool ledOn) {
     payload += String(adcAt(index));
   }
   payload += "]}";
+  // responseBody 接收 Flask 随状态响应返回的最新控制配置。
+  String responseBody;
   // success 表示服务端是否确认接收。
-  const bool success = postStatus(payload);
-  if (success) adcClear();
+  const bool success = postStatus(payload, responseBody);
+  if (success) {
+    adcClear();
+    updateConfig(responseBody, config);
+  }
   return success;
 }
 
 // 主机不带 ADC 数据，只上报 D0 和报警信息。
-bool serverReportMaster(bool ledOn, bool alert) {
+bool serverReportMaster(bool ledOn, bool alert, DeviceConfig& config) {
   // payload 保存本次 POST 的完整 JSON 文本。
   String payload;
   payload.reserve(256);
   appendCommonStatus(payload, "master", ledOn);
   payload += String(",\"alert\":") + (alert ? "true" : "false") + "}";
-  return postStatus(payload);
+  // responseBody 接收 Flask 随状态响应返回的最新控制配置。
+  String responseBody;
+  // success 表示服务端是否确认接收。
+  const bool success = postStatus(payload, responseBody);
+  if (success) updateConfig(responseBody, config);
+  return success;
 }

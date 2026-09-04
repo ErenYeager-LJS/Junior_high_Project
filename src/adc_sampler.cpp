@@ -3,25 +3,26 @@
 #include "device_config.h"
 
 namespace {
-// 缓冲区可保存约 0.5 秒的 250 Hz 数据。
-constexpr size_t BUFFER_SIZE = 128;
+// 缓冲区可保存约 0.5 秒的 1000 Hz 数据。
+constexpr size_t BUFFER_SIZE = 512;
 // 环形缓冲区保存尚未上报的 A0 原始值。
 uint16_t samples[BUFFER_SIZE] = {};
 // writeIndex 指向下一次写入的位置。
 size_t writeIndex = 0;
 // sampleCount 表示缓冲区中有效数据的数量。
 size_t sampleCount = 0;
-// lastSample 记录上一次采样的系统毫秒数。
-uint32_t lastSample = 0;
+// lastSampleUs 记录上一次采样的系统微秒数。
+uint32_t lastSampleUs = 0;
 }
 
 // 让采样周期从设备启动后的当前时刻开始。
-void adcBegin(uint32_t now) { lastSample = now; }
+void adcBegin(uint32_t nowUs) { lastSampleUs = nowUs; }
 
-// 每到 4 ms 读取 A0，并写入环形缓冲区。
-void adcUpdate(uint32_t now) {
-  if (now - lastSample < ADC_SAMPLE_INTERVAL_MS) return;
-  lastSample = now;
+// 每到 1000 us 读取 A0，并写入环形缓冲区。
+void adcUpdate(uint32_t nowUs) {
+  if (nowUs - lastSampleUs < ADC_SAMPLE_INTERVAL_US) return;
+  // 直接使用本次实际采样时刻，网络阻塞后不会伪造“补采样”点。
+  lastSampleUs = nowUs;
   samples[writeIndex] = analogRead(A0);
   writeIndex = (writeIndex + 1) % BUFFER_SIZE;
   if (sampleCount < BUFFER_SIZE) ++sampleCount;

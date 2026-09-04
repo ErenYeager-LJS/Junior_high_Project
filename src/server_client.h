@@ -16,7 +16,7 @@ struct DeviceConfig {
 
 // 从 Flask 获取指定角色的最新控制配置。
 bool serverFetchConfig(const char* role, DeviceConfig& config);
-// 从机向 Flask 上报 LED、网络状态和一批 ADC 数据。
-bool serverReportSlave(bool ledOn);
-// 主机向 Flask 上报 D0 LED 状态和报警状态。
-bool serverReportMaster(bool ledOn, bool alert);
+// 从机上报状态，并从响应中更新网页配置。
+bool serverReportSlave(bool ledOn, DeviceConfig& config);
+// 主机上报状态和报警，并从响应中更新网页配置。
+bool serverReportMaster(bool ledOn, bool alert, DeviceConfig& config);

@@ -18,9 +18,7 @@ constexpr uint8_t SLAVE_LED_PIN = 4;
 // 从机 LED 低电平点亮，主机 LED 高电平点亮。
 constexpr bool MASTER_LED_ACTIVE_HIGH = true;
 constexpr bool SLAVE_LED_ACTIVE_HIGH = false;
-// 从机每 4 ms 读取一次 A0，目标采样率为 250 Hz。
-constexpr uint32_t ADC_SAMPLE_INTERVAL_MS = 4;
+// 从机每 1000 us 读取一次 A0，目标采样率为 1000 Hz。
+constexpr uint32_t ADC_SAMPLE_INTERVAL_US = 1000;
 // 两块设备每 500 ms 向 Flask 上报一次自身状态。
 constexpr uint32_t STATUS_REPORT_INTERVAL_MS = 500;
-// 两块设备每 250 ms 读取一次网页配置。
-constexpr uint32_t CONFIG_POLL_INTERVAL_MS = 250;
