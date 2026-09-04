@@ -42,6 +42,17 @@ platformio run -e slave
 
 下载时必须明确指定环境，避免把角色烧错：主机使用 `platformio run -e master --target upload`，从机使用 `platformio run -e slave --target upload`。
 
+### 如何切换主机和从机
+
+项目只有一个 `src/main.cpp`，不需要手动替换文件。`platformio.ini` 中的两个编译环境会传入不同的预处理标志：
+
+- `[env:master]` 传入 `DEVICE_ROLE_MASTER=1`，编译 `main.cpp` 中 `#if DEVICE_ROLE_MASTER` 下的主机代码。
+- `[env:slave]` 传入 `DEVICE_ROLE_MASTER=0`，编译 `#else` 下的从机代码。
+
+在 VS Code 左侧打开 PlatformIO，进入 `PROJECT TASKS`，选择 `master` 或 `slave`，再点对应环境下的 `Build`。以后需要下载时，也必须在对应环境下点 `Upload`。
+
+不带 `-e` 执行 `platformio run` 时，因为 `default_envs = master, slave`，PlatformIO 会把两个固件都编译一遍。
+
 ## 2026-09-04
 
 ### 当前功能

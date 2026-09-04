@@ -22,5 +22,5 @@ constexpr bool SLAVE_LED_ACTIVE_HIGH = false;
 constexpr uint32_t ADC_SAMPLE_INTERVAL_MS = 4;
 // 两块设备每 500 ms 向 Flask 上报一次自身状态。
 constexpr uint32_t STATUS_REPORT_INTERVAL_MS = 500;
-// 两块设备每 250 ms读取一次网页配置。
+// 两块设备每 250 ms 读取一次网页配置。
 constexpr uint32_t CONFIG_POLL_INTERVAL_MS = 250;
