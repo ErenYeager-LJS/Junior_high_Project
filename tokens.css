@@ -14,6 +14,9 @@
   --color-led-shell: oklch(93% 0.012 45);
   --color-led-off: oklch(52% 0.018 40);
   --color-led-on: oklch(52% 0.19 45);
+  --color-warning: oklch(62% 0.15 65);
+  --color-warning-soft: oklch(94% 0.035 75);
+  --color-warning-ink: oklch(37% 0.09 55);
 
   --font-display: "HarmonyOS Sans SC", "Microsoft YaHei UI", sans-serif;
   --font-body: "Noto Sans SC", "Microsoft YaHei UI", sans-serif;
@@ -41,6 +44,7 @@
   --dur-reduced: 1ms;
   --rule-thin: 1px;
   --radius-panel: 8px;
+  --radius-sm: 6px;
   --radius-round: 999px;
 
   --layout-max: 72rem;

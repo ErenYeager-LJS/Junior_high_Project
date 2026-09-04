@@ -1,0 +1,22 @@
+#pragma once
+
+#include <Arduino.h>
+
+// DeviceConfig 保存网页配置，以及主机需要的从机阈值状态。
+struct DeviceConfig {
+  // thresholdEnabled 为 true 时由 0.6 V 阈值自动控制灯。
+  bool thresholdEnabled;
+  // manualLed 是关闭阈值检测后，网页指定的灯状态。
+  bool manualLed;
+  // slaveOverThreshold 告诉主机从机电压是否超过阈值。
+  bool slaveOverThreshold;
+  // thresholdRaw 是服务端下发的 ADC 原始阈值。
+  uint16_t thresholdRaw;
+};
+
+// 从 Flask 获取指定角色的最新控制配置。
+bool serverFetchConfig(const char* role, DeviceConfig& config);
+// 从机向 Flask 上报 LED、网络状态和一批 ADC 数据。
+bool serverReportSlave(bool ledOn);
+// 主机向 Flask 上报 D0 LED 状态和报警状态。
+bool serverReportMaster(bool ledOn, bool alert);

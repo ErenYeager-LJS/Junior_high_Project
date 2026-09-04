@@ -10,30 +10,45 @@ from flask import Flask, jsonify, render_template, request, send_from_directory
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ONLINE_WINDOW_SECONDS = 4
 ADC_MAX_VALUE = 1023
+ADC_REFERENCE_VOLTAGE = 1.0
+THRESHOLD_VOLTAGE = 0.6
+THRESHOLD_RAW = round(THRESHOLD_VOLTAGE / ADC_REFERENCE_VOLTAGE * ADC_MAX_VALUE)
 ADC_HISTORY_POINTS = 4000
+DEVICE_ROLES = ("master", "slave")
 
 app = Flask(__name__)
 state_lock = Lock()
-device_state = {
-    "led": None,
-    "gpio": 4,
-    "last_seen_epoch": None,
-    "device_ip": None,
-    "rssi": None,
-    "uptime_ms": None,
-    "adc_latest": None,
-    "sample_interval_ms": None,
+devices = {
+    role: {
+        "led": None, "last_seen_epoch": None, "device_ip": None,
+        "rssi": None, "uptime_ms": None, "adc_latest": None,
+        "sample_interval_ms": None, "alert": False,
+    }
+    for role in DEVICE_ROLES
 }
-pending_command = None
-next_command_id = 1
-history = deque(maxlen=12)
+control = {"threshold_enabled": True, "manual_led": {"master": False, "slave": False}}
 adc_waveform = deque(maxlen=ADC_HISTORY_POINTS)
+events = deque(maxlen=20)
 
 
 def utc_label(epoch_seconds):
     if epoch_seconds is None:
         return None
     return datetime.fromtimestamp(epoch_seconds, timezone.utc).isoformat()
+
+
+def public_device(role, now):
+    snapshot = dict(devices[role])
+    last_seen = snapshot.pop("last_seen_epoch")
+    snapshot["last_seen"] = utc_label(last_seen)
+    snapshot["age_seconds"] = None if last_seen is None else round(now - last_seen, 1)
+    snapshot["online"] = last_seen is not None and now - last_seen <= ONLINE_WINDOW_SECONDS
+    return snapshot
+
+
+def slave_over_threshold():
+    value = devices["slave"]["adc_latest"]
+    return isinstance(value, int) and value > THRESHOLD_RAW
 
 
 @app.get("/")
@@ -46,123 +61,113 @@ def tokens():
     return send_from_directory(PROJECT_ROOT, "tokens.css", mimetype="text/css")
 
 
-@app.post("/api/status")
-def update_status():
+@app.post("/api/device-status")
+def update_device_status():
     payload = request.get_json(silent=True)
-    if not isinstance(payload, dict) or not isinstance(payload.get("led"), bool):
+    if not isinstance(payload, dict) or payload.get("role") not in DEVICE_ROLES:
+        return jsonify(error="role must be master or slave"), 400
+    if not isinstance(payload.get("led"), bool):
         return jsonify(error="led must be a JSON boolean"), 400
 
+    role = payload["role"]
     samples = payload.get("adc_samples", [])
-    sample_interval_ms = payload.get("sample_interval_ms")
+    interval = payload.get("sample_interval_ms")
+    if role == "master" and samples:
+        return jsonify(error="master must not send ADC samples"), 400
     if not isinstance(samples, list) or len(samples) > 160:
-        return jsonify(error="adc_samples must be a list with at most 160 values"), 400
-    if any(
-        isinstance(value, bool)
-        or not isinstance(value, int)
-        or not 0 <= value <= ADC_MAX_VALUE
-        for value in samples
-    ):
+        return jsonify(error="adc_samples must contain at most 160 values"), 400
+    if any(isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= ADC_MAX_VALUE for value in samples):
         return jsonify(error="ADC values must be integers from 0 to 1023"), 400
-    if samples and (
-        not isinstance(sample_interval_ms, int)
-        or not 4 <= sample_interval_ms <= 1000
-    ):
+    if samples and (not isinstance(interval, int) or not 4 <= interval <= 1000):
         return jsonify(error="sample_interval_ms must be from 4 to 1000"), 400
 
     now = time()
-    global pending_command
     with state_lock:
-        previous_led = device_state["led"]
-        device_state.update(
-            led=payload["led"],
-            gpio=payload.get("gpio", 4),
-            last_seen_epoch=now,
+        previous_led = devices[role]["led"]
+        devices[role].update(
+            led=payload["led"], last_seen_epoch=now,
             device_ip=payload.get("ip") or request.remote_addr,
-            rssi=payload.get("rssi"),
-            uptime_ms=payload.get("uptime_ms"),
-            adc_latest=samples[-1] if samples else device_state["adc_latest"],
-            sample_interval_ms=(
-                sample_interval_ms
-                if samples
-                else device_state["sample_interval_ms"]
-            ),
+            rssi=payload.get("rssi"), uptime_ms=payload.get("uptime_ms"),
+            adc_latest=samples[-1] if samples else devices[role]["adc_latest"],
+            sample_interval_ms=interval if samples else devices[role]["sample_interval_ms"],
+            alert=bool(payload.get("alert", False)),
         )
-        if pending_command and pending_command["led"] == payload["led"]:
-            pending_command = None
         for index, value in enumerate(samples):
-            offset_ms = (len(samples) - index - 1) * sample_interval_ms
-            adc_waveform.append(
-                {
-                    "timestamp_ms": round(now * 1000 - offset_ms),
-                    "value": value,
-                }
-            )
-        if previous_led is None or previous_led != payload["led"]:
-            history.appendleft(
-                {
-                    "led": payload["led"],
-                    "timestamp": utc_label(now),
-                }
-            )
-
+            adc_waveform.append({
+                "timestamp_ms": round(now * 1000 - (len(samples) - index - 1) * interval),
+                "value": value,
+            })
+        if previous_led is not None and previous_led != payload["led"]:
+            events.appendleft({"role": role, "led": payload["led"], "timestamp": utc_label(now)})
     return jsonify(ok=True)
 
 
-@app.get("/api/command")
-def read_command():
+@app.get("/api/device-config/<role>")
+def read_device_config(role):
+    if role not in DEVICE_ROLES:
+        return jsonify(error="unknown device role"), 404
     with state_lock:
-        command = dict(pending_command) if pending_command else None
-    return jsonify(command or {})
+        response = {
+            "threshold_enabled": control["threshold_enabled"],
+            "threshold_raw": THRESHOLD_RAW,
+            "manual_led": control["manual_led"][role],
+            "slave_over_threshold": slave_over_threshold(),
+        }
+    return jsonify(response)
 
 
-@app.post("/api/command")
-def set_command():
-    global pending_command, next_command_id
+@app.post("/api/settings")
+def update_settings():
     payload = request.get_json(silent=True) or {}
-    action = payload.get("action")
+    enabled = payload.get("threshold_enabled")
+    if not isinstance(enabled, bool):
+        return jsonify(error="threshold_enabled must be a JSON boolean"), 400
     with state_lock:
-        current = device_state["led"]
-        if action == "on":
-            target = True
-        elif action == "off":
-            target = False
-        elif action == "toggle" and isinstance(current, bool):
-            target = not current
-        else:
-            return jsonify(error="action must be on, off, or toggle; device must be online for toggle"), 400
-        pending_command = {"id": next_command_id, "led": target}
-        next_command_id += 1
-    return jsonify(ok=True, command=pending_command)
+        control["threshold_enabled"] = enabled
+        events.appendleft({"type": "mode", "enabled": enabled, "timestamp": utc_label(time())})
+    return jsonify(ok=True, threshold_enabled=enabled)
 
 
-@app.get("/api/status")
-def read_status():
+@app.post("/api/device-command/<role>")
+def set_device_led(role):
+    if role not in DEVICE_ROLES:
+        return jsonify(error="unknown device role"), 404
+    payload = request.get_json(silent=True) or {}
+    led = payload.get("led")
+    if not isinstance(led, bool):
+        return jsonify(error="led must be a JSON boolean"), 400
+    with state_lock:
+        if control["threshold_enabled"]:
+            return jsonify(error="disable threshold detection before manual control"), 409
+        control["manual_led"][role] = led
+    return jsonify(ok=True, role=role, led=led)
+
+
+@app.get("/api/dashboard")
+def read_dashboard():
     now = time()
     with state_lock:
-        snapshot = dict(device_state)
-        snapshot["history"] = list(history)
+        snapshots = {role: public_device(role, now) for role in DEVICE_ROLES}
         points = list(adc_waveform)
+        event_snapshot = list(events)
+        enabled = control["threshold_enabled"]
+        over_threshold = slave_over_threshold()
 
     if points:
         cutoff_ms = points[-1]["timestamp_ms"] - 15000
         points = [point for point in points if point["timestamp_ms"] >= cutoff_ms]
-    snapshot["waveform"] = points
-
-    last_seen = snapshot.pop("last_seen_epoch")
-    snapshot["last_seen"] = utc_label(last_seen)
-    snapshot["age_seconds"] = None if last_seen is None else round(now - last_seen, 1)
-    snapshot["online"] = (
-        last_seen is not None and now - last_seen <= ONLINE_WINDOW_SECONDS
+    values = [point["value"] for point in points]
+    latest = snapshots["slave"]["adc_latest"]
+    return jsonify(
+        devices=snapshots, threshold_enabled=enabled,
+        threshold_voltage=THRESHOLD_VOLTAGE, threshold_raw=THRESHOLD_RAW,
+        slave_over_threshold=over_threshold,
+        alert_message="电压大于阈值" if snapshots["master"]["alert"] else None,
+        adc_voltage=round(latest / ADC_MAX_VALUE * ADC_REFERENCE_VOLTAGE, 3) if isinstance(latest, int) else None,
+        adc_min=min(values) if values else None, adc_max=max(values) if values else None,
+        sample_rate_hz=round(1000 / snapshots["slave"]["sample_interval_ms"]) if snapshots["slave"]["sample_interval_ms"] else None,
+        waveform=points, events=event_snapshot,
     )
-    values = [point["value"] for point in snapshot["waveform"]]
-    snapshot["adc_min"] = min(values) if values else None
-    snapshot["adc_max"] = max(values) if values else None
-    snapshot["sample_rate_hz"] = (
-        round(1000 / snapshot["sample_interval_ms"])
-        if snapshot["sample_interval_ms"]
-        else None
-    )
-    return jsonify(snapshot)
 
 
 if __name__ == "__main__":

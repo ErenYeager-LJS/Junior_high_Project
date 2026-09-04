@@ -1,5 +1,14 @@
 [
   {
+    "date": "2026-09-04",
+    "macrostructure": "Operations Console",
+    "theme": "Coral",
+    "enrichment": "none",
+    "nav": "N9",
+    "footer": "none",
+    "brief": "Dual ESP8266 threshold monitoring and manual control console"
+  },
+  {
     "date": "2026-09-03",
     "macrostructure": "Workbench",
     "theme": "Coral",

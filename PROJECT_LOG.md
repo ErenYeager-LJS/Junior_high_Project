@@ -1,5 +1,47 @@
 # ESP8266 项目交接日志
 
+## 2026-09-04：双机阈值监测版本
+
+### 设备分工
+
+- 主机编译环境为 `master`，预留下载端口 `COM10`。主机通过 Flask 读取从机阈值状态，控制 D0/GPIO16 LED，高电平点亮。
+- 从机编译环境为 `slave`，预留下载端口 `COM11`。从机读取 A0，控制 GPIO4 LED，低电平点亮。
+- 两块设备不直接用串口通信。它们连接同一路由器，通过电脑上的 Flask 服务交换状态和配置。
+
+### 控制规则
+
+- 阈值检测开启时，从机将 A0 与 0.600 V 阈值比较。超过阈值后，从机 GPIO4 灯点亮；主机从 Flask 取得结果后点亮 D0，并上报“电压大于阈值”。
+- 阈值检测关闭时，网页可以分别打开或关闭主机、从机的 LED。
+- 自动模式下服务端拒绝手动 LED 指令，避免两套控制逻辑互相覆盖。
+- 当前按 ESP8266 A0 满量程 1.0 V、10 位 ADC 换算，0.600 V 对应原始值 614。若开发板 A0 前端自带分压，必须按实际板卡量程修改换算关系。
+
+### 新的源码模块
+
+- `src/device_config.h`：主从角色、引脚、电平极性、采样和通信周期。
+- `src/wifi_manager.h/.cpp`：路由器连接和断线重连。
+- `src/adc_sampler.h/.cpp`：从机 A0 定时采样和环形缓冲。
+- `src/led_control.h/.cpp`：统一处理高电平或低电平点亮的 LED。
+- `src/server_client.h/.cpp`：读取 Flask 配置并上报主机或从机状态。
+- `src/main.cpp`：根据 `DEVICE_ROLE_MASTER` 编译主机或从机任务调度代码。
+
+### 编译与验证
+
+- `platformio run -e master -e slave` 编译通过。
+- 主机固件：RAM 35.0%，Flash 27.6%。
+- 从机固件：RAM 35.3%，Flash 27.6%。
+- 本次按要求没有向 COM10 或 COM11 下载固件，因此真实双机联动尚未验证。
+- Flask 接口模拟通过：A0 原始值 500 未超阈值，700 超过阈值；自动模式拒绝手动指令，关闭阈值后允许分别控制设备。
+- 网页已在 320、375、414、768、1280 px 宽度检查，无横向滚动。
+
+### 编译命令
+
+```powershell
+platformio run -e master
+platformio run -e slave
+```
+
+下载时必须明确指定环境，避免把角色烧错：主机使用 `platformio run -e master --target upload`，从机使用 `platformio run -e slave --target upload`。
+
 ## 2026-09-04
 
 ### 当前功能

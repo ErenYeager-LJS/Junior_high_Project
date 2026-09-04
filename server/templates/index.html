@@ -4,115 +4,100 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#f7f4f1">
-    <title>IO4 实时状态</title>
+    <title>双机阈值控制台</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <script src="{{ url_for('static', filename='app.js') }}" defer></script>
   </head>
-  <body data-online="false" data-led="unknown">
-    <header class="nav-edge">
-      <div class="wordmark">ESP8266 / IO4</div>
-      <div class="connection" id="connection" role="status" aria-live="polite">
-        <span class="connection__dot" aria-hidden="true"></span>
-        <span id="connectionText">等待设备</span>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">ESP8266 / 本地网络</p>
+        <h1>双机阈值控制台</h1>
+      </div>
+      <div class="network-state" id="networkState" role="status" aria-live="polite">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span>等待设备</span>
       </div>
     </header>
 
     <main>
-      <section class="workbench" aria-labelledby="pageTitle">
-        <div class="workbench__heading">
-          <p class="context">Flask 状态台</p>
-          <h1 id="pageTitle">IO4 实时状态</h1>
-          <p class="lede">页面接收 ESP8266 的状态上报，显示 GPIO4 当前电平。</p>
+      <section class="mode-band" aria-labelledby="modeTitle">
+        <div>
+          <h2 id="modeTitle">阈值检测</h2>
+          <p>A0 高于 0.600 V 时，从机 GPIO4 和主机 D0 同时点亮。</p>
         </div>
+        <label class="switch-control">
+          <input id="thresholdEnabled" type="checkbox" checked>
+          <span class="switch-track" aria-hidden="true"><span></span></span>
+          <span id="modeLabel">自动检测</span>
+        </label>
+      </section>
 
-        <div class="device-panel">
-          <div class="led-stage" aria-labelledby="ledLabel">
-            <div class="led" id="ledVisual" aria-hidden="true">
-              <span class="led__core"></span>
-            </div>
-            <div class="led-copy">
-              <p class="field-label" id="ledLabel">GPIO4</p>
-              <p class="led-state" id="ledState">等待上报</p>
-              <div class="led-controls" aria-label="GPIO4 远程控制">
-                <button type="button" data-led-action="on">打开</button>
-                <button type="button" data-led-action="off">关闭</button>
-                <button type="button" data-led-action="toggle">翻转</button>
-              </div>
-              <p class="command-status" id="commandStatus" role="status" aria-live="polite"></p>
+      <section class="alert-band" id="alertBand" hidden aria-live="assertive">
+        <strong>电压大于阈值</strong>
+        <span>两台设备的指示灯已联动点亮</span>
+      </section>
+
+      <section class="devices" aria-label="设备状态与手动控制">
+        <article class="device" data-device="slave">
+          <header class="device-head">
+            <div><p class="eyebrow">COM11 / 从机</p><h2>ADC 采集端</h2></div>
+            <span class="device-online" id="slaveOnline">离线</span>
+          </header>
+          <div class="device-body">
+            <div class="lamp" id="slaveLamp" aria-label="从机灯状态"><span></span></div>
+            <dl class="metrics">
+              <div><dt>GPIO4 LED</dt><dd id="slaveLed">—</dd></div>
+              <div><dt>A0 电压</dt><dd id="adcVoltage">—</dd></div>
+              <div><dt>A0 原始值</dt><dd id="adcRaw">—</dd></div>
+              <div><dt>设备地址</dt><dd id="slaveIp">—</dd></div>
+            </dl>
+          </div>
+          <div class="manual-control">
+            <span>手动控制</span>
+            <div class="segmented" role="group" aria-label="从机 LED 手动控制">
+              <button type="button" data-role="slave" data-led="true">打开</button>
+              <button type="button" data-role="slave" data-led="false">关闭</button>
             </div>
           </div>
+        </article>
 
-          <dl class="readings">
-            <div class="reading">
-              <dt>设备地址</dt>
-              <dd id="deviceIp">—</dd>
-            </div>
-            <div class="reading">
-              <dt>Wi-Fi 信号</dt>
-              <dd id="rssi">—</dd>
-            </div>
-            <div class="reading">
-              <dt>运行时间</dt>
-              <dd id="uptime">—</dd>
-            </div>
-            <div class="reading">
-              <dt>最近上报</dt>
-              <dd id="lastSeen">—</dd>
-            </div>
-          </dl>
-        </div>
-      </section>
-
-      <section class="waveform" aria-labelledby="waveformTitle">
-        <div class="section-heading">
-          <h2 id="waveformTitle">A0 实时波形</h2>
-          <p>显示最近 15 秒的 ADC 原始值，量程为 0–1023。</p>
-        </div>
-        <div class="waveform-panel">
-          <div class="chart-wrap">
-            <canvas
-              class="adc-chart"
-              id="adcChart"
-              width="1000"
-              height="320"
-              role="img"
-              aria-label="等待 A0 采样数据"
-            ></canvas>
+        <article class="device" data-device="master">
+          <header class="device-head">
+            <div><p class="eyebrow">COM10 / 主机</p><h2>阈值监测端</h2></div>
+            <span class="device-online" id="masterOnline">离线</span>
+          </header>
+          <div class="device-body">
+            <div class="lamp" id="masterLamp" aria-label="主机灯状态"><span></span></div>
+            <dl class="metrics">
+              <div><dt>D0 LED</dt><dd id="masterLed">—</dd></div>
+              <div><dt>阈值结果</dt><dd id="thresholdResult">—</dd></div>
+              <div><dt>告警上报</dt><dd id="masterAlert">—</dd></div>
+              <div><dt>设备地址</dt><dd id="masterIp">—</dd></div>
+            </dl>
           </div>
-          <dl class="adc-stats">
-            <div>
-              <dt>当前值</dt>
-              <dd id="adcCurrent">—</dd>
+          <div class="manual-control">
+            <span>手动控制</span>
+            <div class="segmented" role="group" aria-label="主机 LED 手动控制">
+              <button type="button" data-role="master" data-led="true">打开</button>
+              <button type="button" data-role="master" data-led="false">关闭</button>
             </div>
-            <div>
-              <dt>窗口最小</dt>
-              <dd id="adcMin">—</dd>
-            </div>
-            <div>
-              <dt>窗口最大</dt>
-              <dd id="adcMax">—</dd>
-            </div>
-            <div>
-              <dt>采样率</dt>
-              <dd id="sampleRate">—</dd>
-            </div>
-          </dl>
-        </div>
+          </div>
+        </article>
       </section>
 
-      <section class="timeline" aria-labelledby="timelineTitle">
-        <div class="section-heading">
-          <h2 id="timelineTitle">最近变化</h2>
-          <p>只记录高低电平切换。</p>
-        </div>
-        <ol class="events" id="events">
-          <li class="events__empty">设备连接后，变化会显示在这里。</li>
-        </ol>
+      <section class="wave-section" aria-labelledby="waveTitle">
+        <header class="section-head">
+          <div><h2 id="waveTitle">从机 A0 波形</h2><p>最近 15 秒，虚线表示 0.600 V 阈值。</p></div>
+          <dl class="inline-stats">
+            <div><dt>采样率</dt><dd id="sampleRate">—</dd></div>
+            <div><dt>窗口范围</dt><dd id="adcRange">—</dd></div>
+          </dl>
+        </header>
+        <div class="chart-wrap"><canvas id="adcChart" width="1100" height="340" aria-label="从机 A0 波形"></canvas></div>
       </section>
+
+      <p class="command-status" id="commandStatus" role="status" aria-live="polite"></p>
     </main>
-
-    <footer class="foot-line">
-      <p>ESP8266 · Flask · 本地网络 192.168.124.0/24</p>
-    </footer>
   </body>
 </html>
