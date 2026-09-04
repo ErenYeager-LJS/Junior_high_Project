@@ -56,6 +56,7 @@ void updateConfig(const String& body, DeviceConfig& config) {
   config.manualLed = readBool(body, "manual_led", config.manualLed);
   config.slaveOverThreshold = readBool(body, "slave_over_threshold", config.slaveOverThreshold);
   config.thresholdRaw = readUnsigned(body, "threshold_raw", config.thresholdRaw);
+  config.slaveAdcRaw = readUnsigned(body, "slave_adc_raw", config.slaveAdcRaw);
 }
 
 // 向统一状态接口发送 JSON，并通过 responseBody 带回响应内容。

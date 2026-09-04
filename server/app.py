@@ -59,6 +59,7 @@ def device_config(role):
         "threshold_raw": THRESHOLD_RAW,
         "manual_led": control["manual_led"][role],
         "slave_over_threshold": slave_over_threshold(),
+        "slave_adc_raw": devices["slave"]["adc_latest"] or 0,
     }
 
 

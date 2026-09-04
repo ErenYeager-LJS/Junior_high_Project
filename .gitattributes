@@ -6,4 +6,6 @@
 *.md text eol=lf working-tree-encoding=UTF-8
 *.cpp text eol=lf working-tree-encoding=UTF-8
 *.h text eol=lf working-tree-encoding=UTF-8
+*.ino text eol=lf working-tree-encoding=UTF-8
 *.ini text eol=lf working-tree-encoding=UTF-8
+*.py text eol=lf working-tree-encoding=UTF-8

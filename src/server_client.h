@@ -12,6 +12,8 @@ struct DeviceConfig {
   bool slaveOverThreshold;
   // thresholdRaw 是服务端下发的 ADC 原始阈值。
   uint16_t thresholdRaw;
+  // slaveAdcRaw 是服务端保存的从机最新 A0 原始值。
+  uint16_t slaveAdcRaw;
 };
 
 // 从 Flask 获取指定角色的最新控制配置。
