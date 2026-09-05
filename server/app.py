@@ -6,6 +6,13 @@ from time import time
 
 from flask import Flask, jsonify, render_template, request, send_from_directory
 
+try:
+    # 直接运行 app.py 时使用同目录导入。
+    from deepseek_assistant import AssistantError, request_control_plan, validate_control_plan
+except ImportError:
+    # 作为 server.app 导入测试时使用包内相对导入。
+    from .deepseek_assistant import AssistantError, request_control_plan, validate_control_plan
+
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ONLINE_WINDOW_SECONDS = 4
@@ -16,6 +23,10 @@ THRESHOLD_RAW = round(THRESHOLD_VOLTAGE / ADC_REFERENCE_VOLTAGE * ADC_MAX_VALUE)
 ADC_HISTORY_POINTS = 20000
 WAVEFORM_DISPLAY_POINTS = 2000
 DEVICE_ROLES = ("master", "slave_a", "slave_b", "slave_c")
+# 单个访问端在 60 秒内最多发起 10 次 AI 请求。
+ASSISTANT_RATE_LIMIT = 10
+# AI 请求限流窗口长度，单位为秒。
+ASSISTANT_RATE_WINDOW_SECONDS = 60
 
 app = Flask(__name__)
 state_lock = Lock()
@@ -31,6 +42,8 @@ control = {"threshold_enabled": True, "manual_led": {role: False for role in DEV
 adc_waveform = deque(maxlen=ADC_HISTORY_POINTS)
 adc_batches = deque(maxlen=30)
 events = deque(maxlen=20)
+# assistant_requests 按访问端 IP 保存最近的 AI 请求时间。
+assistant_requests = {}
 
 
 def utc_label(epoch_seconds):
@@ -69,6 +82,59 @@ def device_config(role):
         "slave_b_led": devices["slave_b"]["led"] is True,
         "slave_c_led": devices["slave_c"]["led"] is True,
     }
+
+
+# 返回 AI 判断所需的当前模式、阈值结果和四块设备状态。
+def assistant_state(now):
+    return {
+        "threshold_enabled": control["threshold_enabled"],
+        "slave_over_threshold": slave_over_threshold(),
+        "devices": {role: public_device(role, now) for role in DEVICE_ROLES},
+    }
+
+
+# 依次执行已通过白名单校验的 AI 动作，并返回实际执行说明。
+def apply_assistant_actions(actions):
+    # proposed_threshold_enabled 先模拟整组动作，防止执行一半才发现冲突。
+    proposed_threshold_enabled = control["threshold_enabled"]
+    for action in actions:
+        if action["type"] == "set_mode":
+            proposed_threshold_enabled = action["mode"] == "automatic"
+        elif proposed_threshold_enabled:
+            raise AssistantError("自动检测开启时不能单独控制 LED。")
+
+    # executed 保存网页要显示的真实执行结果，不采用模型自报结果。
+    executed = []
+    for action in actions:
+        if action["type"] == "set_mode":
+            # enabled 将自然语言模式转换为原有阈值开关。
+            enabled = action["mode"] == "automatic"
+            control["threshold_enabled"] = enabled
+            executed.append("已切换为自动检测" if enabled else "已切换为手动控制")
+            events.appendleft({"type": "mode", "enabled": enabled, "timestamp": utc_label(time())})
+            continue
+
+        # role 是已经通过白名单校验的设备名称。
+        role = action["role"]
+        # led_on 是要写入该设备手动配置的逻辑灯状态。
+        led_on = action["on"]
+        control["manual_led"][role] = led_on
+        # role_label 是适合网页显示的中文设备名。
+        role_label = {"master": "主机", "slave_a": "A 从机", "slave_b": "B 从机", "slave_c": "C 从机"}[role]
+        executed.append(f"{role_label} LED 已设为{'开' if led_on else '关'}")
+    return executed
+
+
+# 检查访问端是否超过 AI 请求额度，并记录本次请求。
+def allow_assistant_request(remote_address, now):
+    # request_times 保存当前访问端在限流窗口内的请求时间。
+    request_times = assistant_requests.setdefault(remote_address, deque())
+    while request_times and now - request_times[0] >= ASSISTANT_RATE_WINDOW_SECONDS:
+        request_times.popleft()
+    if len(request_times) >= ASSISTANT_RATE_LIMIT:
+        return False
+    request_times.append(now)
+    return True
 
 
 @app.get("/")
@@ -159,6 +225,33 @@ def set_device_led(role):
             return jsonify(error="disable threshold detection before manual control"), 409
         control["manual_led"][role] = led
     return jsonify(ok=True, role=role, led=led)
+
+
+@app.post("/api/assistant-command")
+def assistant_command():
+    # payload 是网页发送的单轮对话 JSON。
+    payload = request.get_json(silent=True) or {}
+    # message 是用户输入或语音识别得到的自然语言指令。
+    message = payload.get("message")
+    if not isinstance(message, str):
+        return jsonify(error="message must be a string"), 400
+
+    try:
+        with state_lock:
+            if not allow_assistant_request(request.remote_addr or "unknown", time()):
+                return jsonify(error="请求过于频繁，请稍后再试。"), 429
+            # state_snapshot 固定模型判断时看到的设备状态。
+            state_snapshot = assistant_state(time())
+        # plan 是 DeepSeek 生成但尚未执行的候选计划。
+        plan = request_control_plan(message, state_snapshot)
+        # reply 和 actions 经过本地白名单校验后才可使用。
+        reply, actions = validate_control_plan(plan)
+        with state_lock:
+            # executed 记录后端实际写入的模式和 LED 配置。
+            executed = apply_assistant_actions(actions)
+        return jsonify(ok=True, reply=reply, executed=executed)
+    except AssistantError as error:
+        return jsonify(error=str(error)), 502
 
 
 @app.get("/api/dashboard")

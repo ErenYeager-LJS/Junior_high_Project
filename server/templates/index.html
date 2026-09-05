@@ -38,6 +38,25 @@
         <span>四台设备的指示灯已联动点亮</span>
       </section>
 
+      <section class="assistant-section" aria-labelledby="assistantTitle">
+        <header class="assistant-head">
+          <div><p class="eyebrow">DEEPSEEK / 设备控制</p><h2 id="assistantTitle">对话助手</h2></div>
+          <label class="speech-toggle"><input id="speakReplies" type="checkbox" checked><span>朗读回复</span></label>
+        </header>
+        <div class="chat-log" id="chatLog" role="log" aria-live="polite" aria-relevant="additions">
+          <p class="chat-message assistant-message">设备助手已连接。</p>
+        </div>
+        <form class="assistant-form" id="assistantForm">
+          <label class="sr-only" for="assistantInput">设备控制指令</label>
+          <textarea id="assistantInput" maxlength="300" rows="2" placeholder="输入指令" required></textarea>
+          <div class="assistant-actions">
+            <button class="voice-button" id="voiceButton" type="button" title="语音输入">语音</button>
+            <button class="send-button" id="assistantSend" type="submit">发送</button>
+          </div>
+        </form>
+        <p class="assistant-status" id="assistantStatus" role="status"></p>
+      </section>
+
       <section class="devices" aria-label="设备状态与手动控制">
         <article class="device" data-device="slave_a">
           <header class="device-head">

@@ -4,6 +4,7 @@
 .vscode/launch.json
 .vscode/ipch
 server/.venv/
+server/.env
 __pycache__/
 *.py[cod]
 buffer/

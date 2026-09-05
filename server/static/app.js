@@ -6,6 +6,13 @@ const elements = {
   commandStatus: document.querySelector("#commandStatus"),
   manualButtons: document.querySelectorAll("[data-role][data-led]"),
   adcChart: document.querySelector("#adcChart"),
+  assistantForm: document.querySelector("#assistantForm"),
+  assistantInput: document.querySelector("#assistantInput"),
+  assistantSend: document.querySelector("#assistantSend"),
+  assistantStatus: document.querySelector("#assistantStatus"),
+  chatLog: document.querySelector("#chatLog"),
+  voiceButton: document.querySelector("#voiceButton"),
+  speakReplies: document.querySelector("#speakReplies"),
 };
 
 let waveform = [];
@@ -94,7 +101,53 @@ const render = (status) => {
 
 const requestJson = async (url, body) => {
   const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
+  return result;
+};
+
+const appendChatMessage = (text, kind) => {
+  const message = document.createElement("p");
+  message.className = `chat-message ${kind}-message`;
+  message.textContent = text;
+  elements.chatLog.append(message);
+  elements.chatLog.scrollTop = elements.chatLog.scrollHeight;
+};
+
+const speakReply = (text) => {
+  if (!elements.speakReplies.checked || !("speechSynthesis" in window)) return;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = "zh-CN";
+  window.speechSynthesis.speak(utterance);
+};
+
+const sendAssistantMessage = async () => {
+  const message = elements.assistantInput.value.trim();
+  if (!message) return;
+  appendChatMessage(message, "user");
+  elements.assistantInput.value = "";
+  elements.assistantInput.disabled = true;
+  elements.assistantSend.disabled = true;
+  elements.voiceButton.disabled = true;
+  elements.assistantStatus.textContent = "正在理解指令";
+  try {
+    const result = await requestJson("/api/assistant-command", { message });
+    const executed = result.executed?.length ? ` ${result.executed.join("；")}。` : "";
+    const reply = `${result.reply}${executed}`;
+    appendChatMessage(reply, "assistant");
+    speakReply(reply);
+    elements.assistantStatus.textContent = "";
+    await poll();
+  } catch (error) {
+    appendChatMessage(error.message || "指令执行失败。", "error");
+    elements.assistantStatus.textContent = "请求失败";
+  } finally {
+    elements.assistantInput.disabled = false;
+    elements.assistantSend.disabled = false;
+    elements.voiceButton.disabled = false;
+    elements.assistantInput.focus();
+  }
 };
 
 const poll = async () => {
@@ -131,6 +184,52 @@ elements.manualButtons.forEach((button) => button.addEventListener("click", asyn
   }
   await poll();
 }));
+
+elements.assistantForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await sendAssistantMessage();
+});
+
+elements.assistantInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    elements.assistantForm.requestSubmit();
+  }
+});
+
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (SpeechRecognition) {
+  const recognition = new SpeechRecognition();
+  recognition.lang = "zh-CN";
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+  recognition.addEventListener("start", () => {
+    elements.voiceButton.disabled = true;
+    elements.voiceButton.dataset.listening = "true";
+    elements.assistantStatus.textContent = "正在聆听";
+  });
+  recognition.addEventListener("result", (event) => {
+    elements.assistantInput.value = event.results[0][0].transcript;
+    elements.assistantForm.requestSubmit();
+  });
+  recognition.addEventListener("error", () => {
+    elements.assistantStatus.textContent = "语音识别失败，请使用文字输入";
+  });
+  recognition.addEventListener("end", () => {
+    elements.voiceButton.dataset.listening = "false";
+    if (!elements.assistantSend.disabled) elements.voiceButton.disabled = false;
+    if (elements.assistantStatus.textContent === "正在聆听") elements.assistantStatus.textContent = "";
+  });
+  elements.voiceButton.addEventListener("click", () => {
+    try {
+      recognition.start();
+    } catch {
+      elements.assistantStatus.textContent = "语音识别尚未结束";
+    }
+  });
+} else {
+  elements.voiceButton.hidden = true;
+}
 
 poll();
 setInterval(poll, 500);
