@@ -11,7 +11,7 @@
 
 namespace {
 // config 保存网页下发的阈值开关、手动灯状态和从机阈值结果。
-DeviceConfig config = {true, false, false, 614, 0};
+DeviceConfig config = {true, false, false, 614, 0, false, false, false, false};
 // lastStatusReport 记录上次上报本机状态的系统毫秒数。
 uint32_t lastStatusReport = 0;
 }
@@ -25,8 +25,14 @@ void setup() {
   Serial.println("Role: master, LED: D0/GPIO16 active LOW");
 #else
   ledBegin(SLAVE_LED_PIN, SLAVE_LED_ACTIVE_HIGH);
+#if DEVICE_SLAVE_INDEX == 0
   adcBegin(micros());
-  Serial.println("Role: slave, LED: GPIO4 active LOW, ADC: A0");
+  Serial.println("Role: slave A, LED: GPIO4 active LOW, ADC: A0");
+#elif DEVICE_SLAVE_INDEX == 1
+  Serial.println("Role: slave B, LED: GPIO4 active LOW, ADC: disabled");
+#else
+  Serial.println("Role: slave C, LED: GPIO4 active LOW, ADC: disabled");
+#endif
 #endif
   wifiConnect();
 }
@@ -41,9 +47,9 @@ void loop() {
   // 自动模式跟随从机阈值；手动模式使用网页指定状态。
   const bool masterLedTarget = config.thresholdEnabled ? config.slaveOverThreshold : config.manualLed;
   ledSet(masterLedTarget);
-  // 主机 TFT 显示服务端返回的从机 A0、阈值、网络和主机灯状态。
+  // 主机 TFT 显示服务端返回的 A0、阈值、网络和四盏灯状态。
   tftDisplayUpdate(now, config.slaveAdcRaw, config.thresholdEnabled,
-                   config.thresholdRaw, ledIsOn());
+                   config.slaveLedA, config.slaveLedB, config.slaveLedC);
   // 只有自动模式且超过阈值时，主机才向网页报告警消息。
   const bool alertActive = config.thresholdEnabled && config.slaveOverThreshold;
   if (now - lastStatusReport >= STATUS_REPORT_INTERVAL_MS) {
@@ -51,10 +57,12 @@ void loop() {
     serverReportMaster(ledIsOn(), alertActive, config);
   }
 #else
-  // 从机持续采集 A0，数据由 adc_sampler 模块暂存。
+  // 只有 A 从机持续采集 A0，数据由 adc_sampler 模块暂存。
+#if DEVICE_SLAVE_INDEX == 0
   adcUpdate(micros());
-  // 自动模式直接比较本机 ADC；从机灯是低电平触发，但模块会自动换算电平。
-  const bool slaveLedTarget = config.thresholdEnabled ? adcLatest() > config.thresholdRaw : config.manualLed;
+#endif
+  // 自动模式三块从机都跟随 A 的阈值结果；手动模式使用各自网页状态。
+  const bool slaveLedTarget = config.thresholdEnabled ? config.automaticLed : config.manualLed;
   ledSet(slaveLedTarget);
   if (now - lastStatusReport >= STATUS_REPORT_INTERVAL_MS) {
     lastStatusReport = now;

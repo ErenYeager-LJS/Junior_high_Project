@@ -57,6 +57,10 @@ void updateConfig(const String& body, DeviceConfig& config) {
   config.slaveOverThreshold = readBool(body, "slave_over_threshold", config.slaveOverThreshold);
   config.thresholdRaw = readUnsigned(body, "threshold_raw", config.thresholdRaw);
   config.slaveAdcRaw = readUnsigned(body, "slave_adc_raw", config.slaveAdcRaw);
+  config.automaticLed = readBool(body, "automatic_led", config.automaticLed);
+  config.slaveLedA = readBool(body, "slave_a_led", config.slaveLedA);
+  config.slaveLedB = readBool(body, "slave_b_led", config.slaveLedB);
+  config.slaveLedC = readBool(body, "slave_c_led", config.slaveLedC);
 }
 
 // 向统一状态接口发送 JSON，并通过 responseBody 带回响应内容。
@@ -108,7 +112,16 @@ bool serverReportSlave(bool ledOn, DeviceConfig& config) {
   // payload 保存本次 POST 的完整 JSON 文本。
   String payload;
   payload.reserve(3500);
-  appendCommonStatus(payload, "slave", ledOn);
+  // roleName 根据编译编号区分 A、B、C 三块从机。
+#if DEVICE_SLAVE_INDEX == 0
+  const char* roleName = "slave_a";
+#elif DEVICE_SLAVE_INDEX == 1
+  const char* roleName = "slave_b";
+#else
+  const char* roleName = "slave_c";
+#endif
+  appendCommonStatus(payload, roleName, ledOn);
+#if DEVICE_SLAVE_INDEX == 0
   payload += ",\"sample_interval_us\":" + String(ADC_SAMPLE_INTERVAL_US) + ",\"adc_samples\":[";
   // count 固定本次要发送的数量，避免循环期间变化。
   const size_t count = adcCount();
@@ -118,6 +131,10 @@ bool serverReportSlave(bool ledOn, DeviceConfig& config) {
     payload += String(adcAt(index));
   }
   payload += "]}";
+#else
+  // B、C 暂不使用 ADC，只发送灯状态和在线信息。
+  payload += "}";
+#endif
   // responseBody 接收 Flask 随状态响应返回的最新控制配置。
   String responseBody;
   // success 表示服务端是否确认接收。

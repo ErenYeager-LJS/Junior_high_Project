@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#f7f4f1">
-    <title>双机阈值控制台</title>
+    <title>四机阈值控制台</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <script src="{{ url_for('static', filename='app.js') }}" defer></script>
   </head>
@@ -12,7 +12,7 @@
     <header class="topbar">
       <div>
         <p class="eyebrow">ESP8266 / 本地网络</p>
-        <h1>双机阈值控制台</h1>
+        <h1>四机阈值控制台</h1>
       </div>
       <div class="network-state" id="networkState" role="status" aria-live="polite">
         <span class="status-dot" aria-hidden="true"></span>
@@ -24,7 +24,7 @@
       <section class="mode-band" aria-labelledby="modeTitle">
         <div>
           <h2 id="modeTitle">阈值检测</h2>
-          <p>A0 高于 0.600 V 时，从机 GPIO4 和主机 D0 同时点亮。</p>
+          <p>A 从机 A0 高于 0.600 V 时，主机和 A/B/C 三块从机同步点亮。</p>
         </div>
         <label class="switch-control">
           <input id="thresholdEnabled" type="checkbox" checked>
@@ -35,31 +35,43 @@
 
       <section class="alert-band" id="alertBand" hidden aria-live="assertive">
         <strong>电压大于阈值</strong>
-        <span>两台设备的指示灯已联动点亮</span>
+        <span>四台设备的指示灯已联动点亮</span>
       </section>
 
       <section class="devices" aria-label="设备状态与手动控制">
-        <article class="device" data-device="slave">
+        <article class="device" data-device="slave_a">
           <header class="device-head">
-            <div><p class="eyebrow">COM11 / 从机</p><h2>ADC 采集端</h2></div>
-            <span class="device-online" id="slaveOnline">离线</span>
+            <div><p class="eyebrow">COM11 / 从机 A</p><h2>ADC 采集端</h2></div>
+            <span class="device-online" id="slave_aOnline">离线</span>
           </header>
           <div class="device-body">
-            <div class="lamp" id="slaveLamp" aria-label="从机灯状态"><span></span></div>
+            <div class="lamp" id="slave_aLamp" aria-label="从机 A 灯状态"><span></span></div>
             <dl class="metrics">
-              <div><dt>GPIO4 LED</dt><dd id="slaveLed">—</dd></div>
+              <div><dt>GPIO4 LED</dt><dd id="slave_aLed">—</dd></div>
               <div><dt>A0 电压</dt><dd id="adcVoltage">—</dd></div>
               <div><dt>A0 原始值</dt><dd id="adcRaw">—</dd></div>
-              <div><dt>设备地址</dt><dd id="slaveIp">—</dd></div>
+              <div><dt>设备地址</dt><dd id="slave_aIp">—</dd></div>
             </dl>
           </div>
           <div class="manual-control">
             <span>手动控制</span>
             <div class="segmented" role="group" aria-label="从机 LED 手动控制">
-              <button type="button" data-role="slave" data-led="true">打开</button>
-              <button type="button" data-role="slave" data-led="false">关闭</button>
+              <button type="button" data-role="slave_a" data-led="true">打开</button>
+              <button type="button" data-role="slave_a" data-led="false">关闭</button>
             </div>
           </div>
+        </article>
+
+        <article class="device" data-device="slave_b">
+          <header class="device-head"><div><p class="eyebrow">COM12 / 从机 B</p><h2>联动灯端</h2></div><span class="device-online" id="slave_bOnline">离线</span></header>
+          <div class="device-body"><div class="lamp" id="slave_bLamp" aria-label="从机 B 灯状态"><span></span></div><dl class="metrics"><div><dt>GPIO4 LED</dt><dd id="slave_bLed">—</dd></div><div><dt>ADC</dt><dd>暂不启用</dd></div><div><dt>设备地址</dt><dd id="slave_bIp">—</dd></div></dl></div>
+          <div class="manual-control"><span>手动控制</span><div class="segmented" role="group" aria-label="从机 B LED 手动控制"><button type="button" data-role="slave_b" data-led="true">打开</button><button type="button" data-role="slave_b" data-led="false">关闭</button></div></div>
+        </article>
+
+        <article class="device" data-device="slave_c">
+          <header class="device-head"><div><p class="eyebrow">COM13 / 从机 C</p><h2>联动灯端</h2></div><span class="device-online" id="slave_cOnline">离线</span></header>
+          <div class="device-body"><div class="lamp" id="slave_cLamp" aria-label="从机 C 灯状态"><span></span></div><dl class="metrics"><div><dt>GPIO4 LED</dt><dd id="slave_cLed">—</dd></div><div><dt>ADC</dt><dd>暂不启用</dd></div><div><dt>设备地址</dt><dd id="slave_cIp">—</dd></div></dl></div>
+          <div class="manual-control"><span>手动控制</span><div class="segmented" role="group" aria-label="从机 C LED 手动控制"><button type="button" data-role="slave_c" data-led="true">打开</button><button type="button" data-role="slave_c" data-led="false">关闭</button></div></div>
         </article>
 
         <article class="device" data-device="master">

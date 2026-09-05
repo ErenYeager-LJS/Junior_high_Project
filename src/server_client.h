@@ -14,6 +14,14 @@ struct DeviceConfig {
   uint16_t thresholdRaw;
   // slaveAdcRaw 是服务端保存的从机最新 A0 原始值。
   uint16_t slaveAdcRaw;
+  // automaticLed 是自动模式下所有从机跟随的 A 从机灯状态。
+  bool automaticLed;
+  // slaveLedA 保存 A 从机的实际灯状态，供主机 TFT 使用。
+  bool slaveLedA;
+  // slaveLedB 保存 B 从机的实际灯状态，供主机 TFT 使用。
+  bool slaveLedB;
+  // slaveLedC 保存 C 从机的实际灯状态，供主机 TFT 使用。
+  bool slaveLedC;
 };
 
 // 从 Flask 获取指定角色的最新控制配置。

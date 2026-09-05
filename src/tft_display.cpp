@@ -45,13 +45,13 @@ void tftDisplayBegin() {
   tft.setCursor(2, 2);
   tft.print("MASTER MONITOR");
   tft.drawFastHLine(0, 21, tft.width(), TFT_DARKGREY);
-  drawStatusLine(27, "WiFi: ", "CONNECTING", TFT_YELLOW);
+  drawStatusLine(25, "WiFi: ", "CONNECTING", TFT_YELLOW);
   displayReady = true;
 }
 
 // 每到刷新周期，重绘六项实时状态；其余主循环不操作屏幕。
 void tftDisplayUpdate(uint32_t now, uint16_t adcRaw, bool thresholdEnabled,
-                      uint16_t thresholdRaw, bool ledOn) {
+                      bool slaveLedA, bool slaveLedB, bool slaveLedC) {
   if (!displayReady || now - lastRefreshMs < TFT_REFRESH_INTERVAL_MS) return;
   lastRefreshMs = now;
 
@@ -59,21 +59,17 @@ void tftDisplayUpdate(uint32_t now, uint16_t adcRaw, bool thresholdEnabled,
   const bool wifiConnected = WiFi.status() == WL_CONNECTED;
   // adcVoltage 是最近一次 A0 样本换算后的电压。
   const float adcVoltage = rawToVoltage(adcRaw);
-  // thresholdVoltage 是网页设置的 ADC 阈值换算后的电压。
-  const float thresholdVoltage = rawToVoltage(thresholdRaw);
-  // overThreshold 表示当前采样是否高于网页设置的阈值。
-  const bool overThreshold = adcRaw > thresholdRaw;
-
-  drawStatusLine(27, "WiFi: ", wifiConnected ? "ONLINE" : "OFFLINE",
+  drawStatusLine(25, "WiFi: ", wifiConnected ? "ONLINE" : "OFFLINE",
                  wifiConnected ? TFT_GREEN : TFT_RED);
-  drawStatusLine(50, "A0: ", String(adcVoltage, 3) + " V", TFT_WHITE);
-  drawStatusLine(73, "Detect: ", thresholdEnabled ? "ON" : "OFF",
+  drawStatusLine(48, "A0: ", String(adcVoltage, 3) + " V", TFT_WHITE);
+  drawStatusLine(71, "Detect: ", thresholdEnabled ? "ON" : "OFF",
                  thresholdEnabled ? TFT_GREEN : TFT_YELLOW);
-  drawStatusLine(96, "Limit: ", String(thresholdVoltage, 3) + " V", TFT_WHITE);
-  drawStatusLine(119, "Level: ", overThreshold ? "OVER" : "NORMAL",
-                 overThreshold ? TFT_RED : TFT_GREEN);
-  drawStatusLine(142, "LED: ", ledOn ? "ON" : "OFF",
-                 ledOn ? TFT_GREEN : TFT_LIGHTGREY);
+  drawStatusLine(94, "A LED: ", slaveLedA ? "ON" : "OFF",
+                 slaveLedA ? TFT_GREEN : TFT_LIGHTGREY);
+  drawStatusLine(117, "B LED: ", slaveLedB ? "ON" : "OFF",
+                 slaveLedB ? TFT_GREEN : TFT_LIGHTGREY);
+  drawStatusLine(140, "C LED: ", slaveLedC ? "ON" : "OFF",
+                 slaveLedC ? TFT_GREEN : TFT_LIGHTGREY);
 }
 
 #endif

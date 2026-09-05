@@ -15,7 +15,7 @@ THRESHOLD_VOLTAGE = 0.6
 THRESHOLD_RAW = round(THRESHOLD_VOLTAGE / ADC_REFERENCE_VOLTAGE * ADC_MAX_VALUE)
 ADC_HISTORY_POINTS = 20000
 WAVEFORM_DISPLAY_POINTS = 2000
-DEVICE_ROLES = ("master", "slave")
+DEVICE_ROLES = ("master", "slave_a", "slave_b", "slave_c")
 
 app = Flask(__name__)
 state_lock = Lock()
@@ -27,7 +27,7 @@ devices = {
     }
     for role in DEVICE_ROLES
 }
-control = {"threshold_enabled": True, "manual_led": {"master": False, "slave": False}}
+control = {"threshold_enabled": True, "manual_led": {role: False for role in DEVICE_ROLES}}
 adc_waveform = deque(maxlen=ADC_HISTORY_POINTS)
 adc_batches = deque(maxlen=30)
 events = deque(maxlen=20)
@@ -49,8 +49,12 @@ def public_device(role, now):
 
 
 def slave_over_threshold():
-    value = devices["slave"]["adc_latest"]
+    value = devices["slave_a"]["adc_latest"]
     return isinstance(value, int) and value > THRESHOLD_RAW
+
+
+def automatic_led():
+    return slave_over_threshold()
 
 
 def device_config(role):
@@ -59,7 +63,11 @@ def device_config(role):
         "threshold_raw": THRESHOLD_RAW,
         "manual_led": control["manual_led"][role],
         "slave_over_threshold": slave_over_threshold(),
-        "slave_adc_raw": devices["slave"]["adc_latest"] or 0,
+        "automatic_led": automatic_led(),
+        "slave_adc_raw": devices["slave_a"]["adc_latest"] or 0,
+        "slave_a_led": devices["slave_a"]["led"] is True,
+        "slave_b_led": devices["slave_b"]["led"] is True,
+        "slave_c_led": devices["slave_c"]["led"] is True,
     }
 
 
@@ -77,15 +85,15 @@ def tokens():
 def update_device_status():
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict) or payload.get("role") not in DEVICE_ROLES:
-        return jsonify(error="role must be master or slave"), 400
+        return jsonify(error="role must be master, slave_a, slave_b, or slave_c"), 400
     if not isinstance(payload.get("led"), bool):
         return jsonify(error="led must be a JSON boolean"), 400
 
     role = payload["role"]
     samples = payload.get("adc_samples", [])
     interval = payload.get("sample_interval_us")
-    if role == "master" and samples:
-        return jsonify(error="master must not send ADC samples"), 400
+    if role != "slave_a" and samples:
+        return jsonify(error="only slave_a may send ADC samples"), 400
     if not isinstance(samples, list) or len(samples) > 600:
         return jsonify(error="adc_samples must contain at most 600 values"), 400
     if any(isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= ADC_MAX_VALUE for value in samples):
@@ -172,7 +180,7 @@ def read_dashboard():
     if len(points) > WAVEFORM_DISPLAY_POINTS:
         step = max(1, len(points) // WAVEFORM_DISPLAY_POINTS)
         points = points[::step]
-    latest = snapshots["slave"]["adc_latest"]
+    latest = snapshots["slave_a"]["adc_latest"]
     recent_batches = [batch for batch in batch_snapshot if batch[0] >= now - 5]
     effective_rate = None
     if recent_batches:
@@ -185,7 +193,7 @@ def read_dashboard():
         alert_message="电压大于阈值" if snapshots["master"]["alert"] else None,
         adc_voltage=round(latest / ADC_MAX_VALUE * ADC_REFERENCE_VOLTAGE, 3) if isinstance(latest, int) else None,
         adc_min=min(values) if values else None, adc_max=max(values) if values else None,
-        sample_rate_hz=round(1000000 / snapshots["slave"]["sample_interval_us"]) if snapshots["slave"]["sample_interval_us"] else None,
+        sample_rate_hz=round(1000000 / snapshots["slave_a"]["sample_interval_us"]) if snapshots["slave_a"]["sample_interval_us"] else None,
         effective_sample_rate_hz=effective_rate,
         captured_points=captured_points, waveform=points, events=event_snapshot,
     )

@@ -69,17 +69,20 @@ const drawWaveform = () => {
 };
 
 const render = (status) => {
-  const { master, slave } = status.devices;
+  const { master, slave_a, slave_b, slave_c } = status.devices;
   renderDevice("master", master);
-  renderDevice("slave", slave);
-  elements.networkState.dataset.online = String(master.online && slave.online);
-  elements.networkState.lastElementChild.textContent = master.online && slave.online ? "两台设备在线" : "设备未全部在线";
+  renderDevice("slave_a", slave_a);
+  renderDevice("slave_b", slave_b);
+  renderDevice("slave_c", slave_c);
+  const allOnline = master.online && slave_a.online && slave_b.online && slave_c.online;
+  elements.networkState.dataset.online = String(allOnline);
+  elements.networkState.lastElementChild.textContent = allOnline ? "四台设备在线" : "设备未全部在线";
   elements.thresholdEnabled.checked = status.threshold_enabled;
   elements.modeLabel.textContent = status.threshold_enabled ? "自动检测" : "手动控制";
   elements.manualButtons.forEach((button) => (button.disabled = status.threshold_enabled));
   elements.alertBand.hidden = !status.alert_message;
   setText("adcVoltage", Number.isFinite(status.adc_voltage) ? `${status.adc_voltage.toFixed(3)} V` : null);
-  setText("adcRaw", slave.adc_latest);
+  setText("adcRaw", slave_a.adc_latest);
   setText("thresholdResult", status.slave_over_threshold ? "超过 0.600 V" : "未超过阈值");
   setText("masterAlert", status.alert_message || "无告警");
   setText("sampleRate", Number.isFinite(status.effective_sample_rate_hz) ? `${status.effective_sample_rate_hz} Hz（目标 ${status.sample_rate_hz}）` : null);
