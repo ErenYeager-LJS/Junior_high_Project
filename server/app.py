@@ -44,6 +44,11 @@ ADC_HISTORY_POINTS = 20000
 WAVEFORM_DISPLAY_POINTS = 2000
 # DEVICE_ROLES 是服务端认可的四种设备身份。
 DEVICE_ROLES = ("master", "slave_a", "slave_b", "slave_c")
+# LIGHTING_PRESETS 保存两种组合模式下四块设备的逻辑灯状态。
+LIGHTING_PRESETS = {
+    "mode_1": {"master": False, "slave_a": True, "slave_b": True, "slave_c": True},
+    "mode_2": {"master": True, "slave_a": False, "slave_b": False, "slave_c": False},
+}
 # 单个访问端在 60 秒内最多发起 10 次 AI 请求。
 ASSISTANT_RATE_LIMIT = 10
 # AI 请求限流窗口长度，单位为秒。
@@ -107,6 +112,25 @@ def automatic_led():
     return slave_over_threshold()
 
 
+# active_lighting_preset 判断当前手动目标是否完整匹配某个组合模式。
+def active_lighting_preset():
+    if control["threshold_enabled"]:
+        return None
+    for preset_name, led_states in LIGHTING_PRESETS.items():
+        if control["manual_led"] == led_states:
+            return preset_name
+    return None
+
+
+# apply_lighting_preset 关闭阈值检测，并一次性写入组合模式的四盏灯状态。
+def apply_lighting_preset(preset_name):
+    # led_states 是预设中四块设备各自应采用的目标状态。
+    led_states = LIGHTING_PRESETS[preset_name]
+    control["threshold_enabled"] = False
+    control["manual_led"].update(led_states)
+    events.appendleft({"type": "preset", "preset": preset_name, "timestamp": utc_label(time())})
+
+
 # device_config 生成指定设备下一次轮询需要执行的控制配置。
 def device_config(role):
     return {
@@ -141,6 +165,8 @@ def apply_assistant_actions(actions):
     for action in actions:
         if action["type"] == "set_mode":
             proposed_threshold_enabled = action["mode"] == "automatic"
+        elif action["type"] == "set_preset":
+            proposed_threshold_enabled = False
         elif proposed_threshold_enabled:
             raise AssistantError("自动检测开启时不能单独控制 LED。")
 
@@ -153,6 +179,13 @@ def apply_assistant_actions(actions):
             control["threshold_enabled"] = enabled
             executed.append("已切换为自动检测" if enabled else "已切换为手动控制")
             events.appendleft({"type": "mode", "enabled": enabled, "timestamp": utc_label(time())})
+            continue
+
+        if action["type"] == "set_preset":
+            # preset_name 是已经通过白名单校验的组合模式名称。
+            preset_name = action["preset"]
+            apply_lighting_preset(preset_name)
+            executed.append("模式 1 已启用" if preset_name == "mode_1" else "模式 2 已启用")
             continue
 
         # role 是已经通过白名单校验的设备名称。
@@ -265,6 +298,18 @@ def update_settings():
     return jsonify(ok=True, threshold_enabled=enabled)
 
 
+@app.post("/api/lighting-preset/<preset_name>")
+# set_lighting_preset 把网页选择的组合模式原子地写入四块设备目标状态。
+def set_lighting_preset(preset_name):
+    if preset_name not in LIGHTING_PRESETS:
+        return jsonify(error="unknown lighting preset"), 404
+    with state_lock:
+        apply_lighting_preset(preset_name)
+        # led_states 是返回网页核对的四块设备目标状态副本。
+        led_states = dict(control["manual_led"])
+    return jsonify(ok=True, preset=preset_name, threshold_enabled=False, led_states=led_states)
+
+
 @app.post("/api/device-command/<role>")
 # set_device_led 保存网页为指定设备设置的手动 LED 目标。
 def set_device_led(role):
@@ -345,6 +390,8 @@ def read_dashboard():
         batch_snapshot = list(adc_batches)
         # enabled 表示当前是否处于自动阈值检测模式。
         enabled = control["threshold_enabled"]
+        # active_preset 是当前手动目标恰好匹配的组合模式。
+        active_preset = active_lighting_preset()
         # over_threshold 表示 A 从机最新数据是否超过阈值。
         over_threshold = slave_over_threshold()
 
@@ -370,7 +417,7 @@ def read_dashboard():
         measured_seconds = max(0.5, now - recent_batches[0][0])
         effective_rate = round(sum(batch[1] for batch in recent_batches) / measured_seconds)
     return jsonify(
-        devices=snapshots, threshold_enabled=enabled,
+        devices=snapshots, threshold_enabled=enabled, active_lighting_preset=active_preset,
         threshold_voltage=THRESHOLD_VOLTAGE, threshold_raw=THRESHOLD_RAW,
         slave_over_threshold=over_threshold,
         alert_message="电压大于阈值" if snapshots["master"]["alert"] else None,

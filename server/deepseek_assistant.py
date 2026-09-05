@@ -19,6 +19,8 @@ MAX_ACTIONS = 5
 ALLOWED_ROLES = {"master", "slave_a", "slave_b", "slave_c"}
 # AI 可以切换的模式白名单。
 ALLOWED_MODES = {"automatic", "manual"}
+# AI 可以选择的组合灯光模式白名单。
+ALLOWED_PRESETS = {"mode_1", "mode_2"}
 # AI 可以识别的对话意图白名单。
 ALLOWED_INTENTS = {"chat", "control", "time", "weather"}
 # 浏览器最多向模型补充的历史消息条数。
@@ -72,17 +74,19 @@ def build_system_prompt(state_text):
 
 设备名称映射：主机=master，A从机=slave_a，B从机=slave_b，C从机=slave_c。
 模式：automatic 表示 A0 阈值自动联动，manual 表示四盏灯可分别控制。
+组合模式：mode_1 表示 A/B/C 全亮且主机灭；mode_2 表示 A/B/C 全灭且主机亮。
 只返回一个 JSON 对象，不要 Markdown：
 {{"intent":"chat或control或time或weather","reply":"自然的中文回复","weather_city":null,"actions":[]}}
 允许的动作只有：
 {{"type":"set_mode","mode":"automatic或manual"}}
+{{"type":"set_preset","preset":"mode_1或mode_2"}}
 {{"type":"set_led","role":"master或slave_a或slave_b或slave_c","on":true或false}}
 规则：
 1. 自己判断意图：普通交流用 chat；设备操作或设备状态用 control；当前日期时间用 time；实时天气用 weather。
 2. chat、time、weather 的 actions 必须为空。time 必须依据当前状态中的 local_time 回答，不要猜测。
 3. weather 只提取城市到 weather_city，reply 先写一句简短过渡；不要凭模型知识编造实时天气。没有城市时 weather_city=null，并请用户补充城市。
 4. 用户要控制任一灯时，如果当前是 automatic，先加入 set_mode=manual，再加入灯动作。
-5. 用户说开启自动检测、阈值检测或自动模式时，只设置 automatic，不再设置单灯。
+5. 用户说开启自动检测、阈值检测或自动模式时，只设置 automatic，不再设置单灯。用户说模式 1 或模式 2 时，只返回对应的 set_preset 动作。
 6. 用户只问设备状态时使用 control，actions 返回空数组，并根据当前状态回答。
 7. 不允许修改阈值、网络、ADC、采样率或执行动作白名单之外的任何操作；用户提出这些要求时，使用 chat 意图并只回复“不支持当前功能。”。
 8. 回复像自然对话：直接回答，不说“已为您”“操作成功”“有什么需要尽管说”等模板话，不复述用户整句话，不虚构信息。
@@ -234,6 +238,8 @@ def validate_control_plan(plan):
         action_type = action.get("type")
         if action_type == "set_mode" and action.get("mode") in ALLOWED_MODES:
             validated_actions.append({"type": action_type, "mode": action["mode"]})
+        elif action_type == "set_preset" and action.get("preset") in ALLOWED_PRESETS:
+            validated_actions.append({"type": action_type, "preset": action["preset"]})
         elif (
             action_type == "set_led"
             and action.get("role") in ALLOWED_ROLES

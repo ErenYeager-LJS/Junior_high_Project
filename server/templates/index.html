@@ -58,11 +58,20 @@
             <h2 id="modeTitle">阈值检测</h2>
             <p>A0 高于 0.600 V 时四机同步点亮。</p>
           </div>
-          <label class="switch-control">
-            <input id="thresholdEnabled" type="checkbox" checked>
-            <span class="switch-track" aria-hidden="true"><span></span></span>
-            <span id="modeLabel">自动检测</span>
-          </label>
+          <div class="mode-controls">
+            <label class="switch-control">
+              <input id="thresholdEnabled" type="checkbox" checked>
+              <span class="switch-track" aria-hidden="true"><span></span></span>
+              <span id="modeLabel">自动检测</span>
+            </label>
+            <div class="preset-control">
+              <span>组合模式</span>
+              <div class="segmented preset-buttons" role="group" aria-label="灯光组合模式">
+                <button type="button" data-preset="mode_1" aria-pressed="false" title="A、B、C 亮，主机灭">模式 1</button>
+                <button type="button" data-preset="mode_2" aria-pressed="false" title="A、B、C 灭，主机亮">模式 2</button>
+              </div>
+            </div>
+          </div>
         </section>
 
         <section class="alert-band" id="alertBand" hidden aria-live="assertive">

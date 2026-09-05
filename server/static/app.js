@@ -6,6 +6,7 @@ const elements = {
   alertBand: document.querySelector("#alertBand"),
   commandStatus: document.querySelector("#commandStatus"),
   manualButtons: document.querySelectorAll("[data-role][data-led]"),
+  presetButtons: document.querySelectorAll("[data-preset]"),
   adcChart: document.querySelector("#adcChart"),
   assistantForm: document.querySelector("#assistantForm"),
   assistantInput: document.querySelector("#assistantInput"),
@@ -114,6 +115,11 @@ const render = (status) => {
   elements.thresholdEnabled.checked = status.threshold_enabled;
   elements.modeLabel.textContent = status.threshold_enabled ? "自动检测" : "手动控制";
   elements.manualButtons.forEach((button) => (button.disabled = status.threshold_enabled));
+  elements.presetButtons.forEach((button) => {
+    // isActive 表示这个按钮对应当前服务端保存的完整组合状态。
+    const isActive = button.dataset.preset === status.active_lighting_preset;
+    button.setAttribute("aria-pressed", String(isActive));
+  });
   elements.alertBand.hidden = !status.alert_message;
   setText("adcVoltage", Number.isFinite(status.adc_voltage) ? `${status.adc_voltage.toFixed(3)} V` : null);
   setText("adcRaw", slave_a.adc_latest);
@@ -238,6 +244,24 @@ elements.thresholdEnabled.addEventListener("change", async () => {
     elements.thresholdEnabled.disabled = false;
   }
 });
+
+// 每个组合模式按钮会一次性设置四盏灯，并自动进入手动控制。
+elements.presetButtons.forEach((button) => button.addEventListener("click", async () => {
+  elements.presetButtons.forEach((item) => (item.disabled = true));
+  try {
+    // presetName 是按钮绑定的 mode_1 或 mode_2 服务端标识。
+    const presetName = button.dataset.preset;
+    await requestJson(`/api/lighting-preset/${presetName}`, {});
+    elements.commandStatus.textContent = presetName === "mode_1"
+      ? "模式 1：A、B、C 已设为亮，主机已设为灭"
+      : "模式 2：A、B、C 已设为灭，主机已设为亮";
+    await poll();
+  } catch {
+    elements.commandStatus.textContent = "组合模式切换失败";
+  } finally {
+    elements.presetButtons.forEach((item) => (item.disabled = false));
+  }
+}));
 
 // 每个手动按钮把目标设备和灯状态发送给 Flask。
 elements.manualButtons.forEach((button) => button.addEventListener("click", async () => {
