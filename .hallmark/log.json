@@ -1,5 +1,14 @@
 [
   {
+    "date": "2026-09-05",
+    "macrostructure": "Feature Stack",
+    "theme": "Cobalt",
+    "enrichment": "none",
+    "nav": "N5",
+    "footer": "Ft2",
+    "brief": "Conversational ESP8266 control with realtime time and weather"
+  },
+  {
     "date": "2026-09-04",
     "macrostructure": "Operations Console",
     "theme": "Coral",

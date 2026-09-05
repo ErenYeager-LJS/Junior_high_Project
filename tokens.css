@@ -1,27 +1,35 @@
 :root {
-  --color-paper: oklch(97% 0.008 55);
-  --color-surface: oklch(99.5% 0.004 55);
-  --color-ink: oklch(25% 0.018 35);
-  --color-muted: oklch(46% 0.018 35);
-  --color-rule: oklch(88% 0.012 45);
-  --color-rule-strong: oklch(78% 0.018 42);
-  --color-accent: oklch(70% 0.12 28);
-  --color-accent-ink: oklch(36% 0.11 25);
-  --color-focus: oklch(48% 0.14 250);
-  --color-success: oklch(54% 0.12 150);
-  --color-success-ink: oklch(35% 0.08 150);
-  --color-offline: oklch(54% 0.02 40);
-  --color-led-shell: oklch(93% 0.012 45);
-  --color-led-off: oklch(52% 0.018 40);
-  --color-led-on: oklch(52% 0.19 45);
-  --color-warning: oklch(62% 0.15 65);
-  --color-warning-soft: oklch(94% 0.035 75);
-  --color-warning-ink: oklch(37% 0.09 55);
+  --color-paper: oklch(98.5% 0.004 250);
+  --color-paper-2: oklch(96.5% 0.006 250);
+  --color-surface: oklch(100% 0 0);
+  --color-surface-raised: oklch(99.2% 0.003 250);
+  --color-ink: oklch(23% 0.015 255);
+  --color-muted: oklch(46% 0.014 255);
+  --color-rule: oklch(91% 0.007 250);
+  --color-rule-strong: oklch(84% 0.012 250);
+  --color-accent: oklch(56% 0.2 255);
+  --color-accent-hover: oklch(50% 0.2 255);
+  --color-accent-soft: oklch(95% 0.03 255);
+  --color-accent-ink: oklch(99% 0.002 250);
+  --color-focus: oklch(46% 0.19 255);
+  --color-success: oklch(58% 0.14 150);
+  --color-success-soft: oklch(95% 0.035 150);
+  --color-success-ink: oklch(33% 0.09 150);
+  --color-error: oklch(56% 0.2 25);
+  --color-error-soft: oklch(95% 0.03 25);
+  --color-offline: oklch(58% 0.012 255);
+  --color-led-shell: oklch(94% 0.008 250);
+  --color-led-off: oklch(60% 0.012 255);
+  --color-led-on: oklch(64% 0.18 55);
+  --color-warning: oklch(66% 0.15 70);
+  --color-warning-soft: oklch(96% 0.035 80);
+  --color-warning-ink: oklch(38% 0.09 60);
 
-  --font-display: "HarmonyOS Sans SC", "Microsoft YaHei UI", sans-serif;
+  --font-display: "Geist", "Noto Sans SC", "Microsoft YaHei UI", sans-serif;
   --font-body: "Noto Sans SC", "Microsoft YaHei UI", sans-serif;
-  --font-mono: "Cascadia Mono", Consolas, monospace;
+  --font-mono: "Geist", "Noto Sans SC", "Microsoft YaHei UI", sans-serif;
 
+  --space-2xs: 0.25rem;
   --space-xs: 0.5rem;
   --space-sm: 0.75rem;
   --space-md: 1rem;
@@ -30,23 +38,27 @@
   --space-2xl: 3rem;
   --space-3xl: 4rem;
 
-  --text-xs: 0.78rem;
+  --text-xs: 0.8rem;
   --text-sm: 0.9rem;
   --text-body: 1rem;
-  --text-xl: 1.75rem;
-  --text-2xl: 2.35rem;
-  --text-display: clamp(2.35rem, 7vw, 4.5rem);
+  --text-md: 1.25rem;
+  --text-lg: 1.56rem;
+  --text-xl: 1.95rem;
+  --text-2xl: 2.44rem;
+  --text-display: clamp(2.44rem, 5vw, 4rem);
 
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast: 120ms;
   --dur-status: 180ms;
   --dur-reduced: 1ms;
   --rule-thin: 1px;
   --radius-panel: 8px;
   --radius-sm: 6px;
   --radius-round: 999px;
+  --shadow-float: 0 12px 36px oklch(23% 0.015 255 / 0.08);
 
-  --layout-max: 72rem;
+  --layout-max: 82rem;
   --page-gutter: clamp(1rem, 4vw, 3rem);
 }
