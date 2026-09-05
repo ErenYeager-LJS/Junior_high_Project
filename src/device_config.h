@@ -18,6 +18,10 @@ constexpr uint32_t UART0_BAUD_RATE = 921600;
 constexpr char SERVER_BASE_URL[] = "http://192.168.124.3:5000";
 // 主机使用 D0，也就是 ESP8266 的 GPIO16。
 constexpr uint8_t MASTER_LED_PIN = 16;
+// 主机使用 D2，也就是 GPIO4，作为 TF 卡独立片选引脚。
+constexpr uint8_t TF_CARD_CS_PIN = 4;
+// TF 卡先以 4 MHz 保守速率初始化，便于长杜邦线稳定通信。
+constexpr uint32_t TF_CARD_SPI_FREQUENCY = 4000000;
 // 从机使用 GPIO4，对应开发板常见的 D2 引脚。
 constexpr uint8_t SLAVE_LED_PIN = 4;
 // 主机和从机的 LED 都在 GPIO 输出低电平时点亮。

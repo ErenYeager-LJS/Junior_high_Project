@@ -49,6 +49,38 @@ void tftDisplayBegin() {
   displayReady = true;
 }
 
+// 在开机阶段显示 TF 卡自检结果，方便不接电脑时直接看屏幕判断。
+void tftDisplayShowTfCardTest(bool mounted, bool readWritePassed,
+                              uint32_t capacityMb, uint16_t rootEntryCount) {
+  if (!displayReady) return;
+  // passed 只有挂载和临时文件读写都成功时才为 true。
+  const bool passed = mounted && readWritePassed;
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextFont(2);
+  tft.setTextColor(TFT_CYAN, TFT_BLACK);
+  tft.setCursor(2, 2);
+  tft.print("TF CARD TEST");
+  tft.drawFastHLine(0, 21, tft.width(), TFT_DARKGREY);
+  drawStatusLine(30, "Mount: ", mounted ? "OK" : "FAIL",
+                 mounted ? TFT_GREEN : TFT_RED);
+  drawStatusLine(55, "R/W: ", readWritePassed ? "OK" : "FAIL",
+                 readWritePassed ? TFT_GREEN : TFT_RED);
+  drawStatusLine(80, "Size: ", mounted ? String(capacityMb) + " MB" : "--",
+                 mounted ? TFT_WHITE : TFT_LIGHTGREY);
+  drawStatusLine(105, "Files: ", mounted ? String(rootEntryCount) : "--",
+                 mounted ? TFT_WHITE : TFT_LIGHTGREY);
+  drawStatusLine(130, "Result: ", passed ? "PASS" : "FAIL",
+                 passed ? TFT_GREEN : TFT_YELLOW);
+  delay(3500);
+  // 自检结束后重画正式监测页的固定标题。
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextFont(2);
+  tft.setTextColor(TFT_CYAN, TFT_BLACK);
+  tft.setCursor(2, 2);
+  tft.print("MASTER MONITOR");
+  tft.drawFastHLine(0, 21, tft.width(), TFT_DARKGREY);
+}
+
 // 每到刷新周期，重绘六项实时状态；其余主循环不操作屏幕。
 void tftDisplayUpdate(uint32_t now, uint16_t adcRaw, bool thresholdEnabled,
                       bool slaveLedA, bool slaveLedB, bool slaveLedC) {

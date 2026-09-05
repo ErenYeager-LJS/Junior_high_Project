@@ -22,6 +22,12 @@ struct DeviceConfig {
   bool slaveLedB;
   // slaveLedC 保存 C 从机的实际灯状态，供主机 TFT 使用。
   bool slaveLedC;
+  // tfCommandId 是 Flask 等待主机执行的 TF 卡模式命令编号。
+  uint32_t tfCommandId;
+  // tfCommandOperation 是新增或删除模式对应的英文操作名。
+  String tfCommandOperation;
+  // tfCommandRecord 是无需再次转义即可写入 TF 文件的紧凑模式记录。
+  String tfCommandRecord;
 };
 
 // 从 Flask 获取指定角色的最新控制配置。

@@ -6,6 +6,9 @@
 
 #include "adc_sampler.h"
 #include "device_config.h"
+#if DEVICE_ROLE_MASTER
+#include "tf_mode_store.h"
+#endif
 
 namespace {
 // HTTP 请求最多等待 500 ms，超时后把执行权还给主循环。
@@ -42,6 +45,22 @@ uint16_t readUnsigned(const String& body, const char* name, uint16_t fallback) {
   return static_cast<uint16_t>(body.substring(colon + 1).toInt());
 }
 
+// 从简单 JSON 文本中读取不含引号和反斜杠的字符串字段。
+String readString(const String& body, const char* name, const String& fallback) {
+  // key 保存带双引号字段名的文本。
+  const String key = String("\"") + name + "\"";
+  // position 是字段名在 JSON 中的位置。
+  const int position = body.indexOf(key);
+  if (position < 0) return fallback;
+  // colon 是字段名后冒号的位置。
+  const int colon = body.indexOf(':', position + key.length());
+  // quoteStart 和 quoteEnd 分别是字符串值两侧的双引号位置。
+  const int quoteStart = body.indexOf('\"', colon + 1);
+  const int quoteEnd = quoteStart < 0 ? -1 : body.indexOf('\"', quoteStart + 1);
+  if (colon < 0 || quoteStart < 0 || quoteEnd < 0) return fallback;
+  return body.substring(quoteStart + 1, quoteEnd);
+}
+
 // 把公共设备信息追加到正在构造的 JSON 文本中。
 void appendCommonStatus(String& payload, const char* role, bool ledOn) {
   payload = String("{\"role\":\"") + role + "\",\"led\":" +
@@ -61,6 +80,9 @@ void updateConfig(const String& body, DeviceConfig& config) {
   config.slaveLedA = readBool(body, "slave_a_led", config.slaveLedA);
   config.slaveLedB = readBool(body, "slave_b_led", config.slaveLedB);
   config.slaveLedC = readBool(body, "slave_c_led", config.slaveLedC);
+  config.tfCommandId = readUnsigned(body, "tf_command_id", config.tfCommandId);
+  config.tfCommandOperation = readString(body, "tf_command_operation", config.tfCommandOperation);
+  config.tfCommandRecord = readString(body, "tf_command_record", config.tfCommandRecord);
 }
 
 // 向统一状态接口发送 JSON，并通过 responseBody 带回响应内容。
@@ -152,7 +174,15 @@ bool serverReportMaster(bool ledOn, bool alert, DeviceConfig& config) {
   String payload;
   payload.reserve(256);
   appendCommonStatus(payload, "master", ledOn);
-  payload += String(",\"alert\":") + (alert ? "true" : "false") + "}";
+  payload += String(",\"alert\":") + (alert ? "true" : "false");
+#if DEVICE_ROLE_MASTER
+  payload += String(",\"tf_card_ready\":") + (tfModeStoreReady() ? "true" : "false");
+  payload += ",\"tf_modes_data\":\"" + tfModeStoreEncodedModes() + "\"";
+  payload += ",\"tf_command_ack\":" + String(tfModeStoreAcknowledgedCommandId());
+  payload += String(",\"tf_command_success\":") +
+             (tfModeStoreLastCommandSucceeded() ? "true" : "false");
+#endif
+  payload += "}";
   // responseBody 接收 Flask 随状态响应返回的最新控制配置。
   String responseBody;
   // success 表示服务端是否确认接收。

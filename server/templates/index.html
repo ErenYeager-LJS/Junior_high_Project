@@ -21,6 +21,10 @@
         <span class="status-dot" aria-hidden="true"></span>
         <span>等待设备</span>
       </div>
+      <button class="mode-shortcut" id="modeShortcut" type="button">
+        <i data-lucide="layers-3" aria-hidden="true"></i>
+        <span>模式</span>
+      </button>
       <button class="assistant-shortcut" id="assistantShortcut" type="button">
         <i data-lucide="message-circle" aria-hidden="true"></i>
         <span>对话</span>
@@ -56,7 +60,7 @@
         <section class="mode-band" aria-labelledby="modeTitle">
           <div>
             <h2 id="modeTitle">阈值检测</h2>
-            <p>A0 高于 0.600 V 时四机同步点亮。</p>
+            <p id="timedModeStatus">A0 高于 0.600 V 时四机同步点亮。</p>
           </div>
           <div class="mode-controls">
             <label class="switch-control">
@@ -64,13 +68,6 @@
               <span class="switch-track" aria-hidden="true"><span></span></span>
               <span id="modeLabel">自动检测</span>
             </label>
-            <div class="preset-control">
-              <span>组合模式</span>
-              <div class="segmented preset-buttons" role="group" aria-label="灯光组合模式">
-                <button type="button" data-preset="mode_1" aria-pressed="false" title="A、B、C 亮，主机灭">模式 1</button>
-                <button type="button" data-preset="mode_2" aria-pressed="false" title="A、B、C 灭，主机亮">模式 2</button>
-              </div>
-            </div>
           </div>
         </section>
 
@@ -153,6 +150,58 @@
         <p class="command-status" id="commandStatus" role="status" aria-live="polite"></p>
       </div>
     </main>
+
+    <dialog class="mode-dialog" id="modeDialog" aria-labelledby="modeDialogTitle">
+      <div class="mode-window">
+        <header class="mode-window-head">
+          <div>
+            <p class="eyebrow" id="tfCardStatus">TF 卡同步中</p>
+            <h2 id="modeDialogTitle">灯光模式</h2>
+          </div>
+          <button class="icon-button" id="modeClose" type="button" title="关闭模式窗口" aria-label="关闭模式窗口">
+            <i data-lucide="x" aria-hidden="true"></i>
+          </button>
+        </header>
+
+        <div class="mode-window-body">
+          <section aria-labelledby="savedModesTitle">
+            <div class="mode-list-head">
+              <h3 id="savedModesTitle">TF 卡中的模式</h3>
+              <span id="modeCount">0 / 12</span>
+            </div>
+            <div class="mode-list" id="modeList"></div>
+          </section>
+
+          <form class="mode-form" id="modeForm">
+            <h3>新建模式</h3>
+            <div class="mode-form-grid">
+              <label class="field-control">
+                <span>名称</span>
+                <input id="modeName" name="name" type="text" maxlength="24" required>
+              </label>
+              <label class="field-control">
+                <span>持续时间</span>
+                <span class="number-field"><input id="modeDuration" name="duration" type="number" min="1" max="3600" value="10" required><span>秒</span></span>
+              </label>
+            </div>
+            <fieldset class="mode-led-fields">
+              <legend>LED 状态</legend>
+              <label><input name="master" type="checkbox"><span>主机</span></label>
+              <label><input name="slave_a" type="checkbox"><span>A 从机</span></label>
+              <label><input name="slave_b" type="checkbox"><span>B 从机</span></label>
+              <label><input name="slave_c" type="checkbox"><span>C 从机</span></label>
+            </fieldset>
+            <div class="mode-form-actions">
+              <p id="modeFormStatus" role="status" aria-live="polite"></p>
+              <button class="primary-button" id="modeSave" type="submit">
+                <i data-lucide="save" aria-hidden="true"></i>
+                <span>保存到 TF 卡</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </dialog>
     <footer class="foot-line"><p>ESP8266 · 本地控制与实时监测</p></footer>
   </body>
 </html>
