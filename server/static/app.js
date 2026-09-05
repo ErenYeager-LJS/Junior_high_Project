@@ -12,7 +12,6 @@ const elements = {
   assistantSend: document.querySelector("#assistantSend"),
   assistantStatus: document.querySelector("#assistantStatus"),
   chatLog: document.querySelector("#chatLog"),
-  voiceButton: document.querySelector("#voiceButton"),
   speakReplies: document.querySelector("#speakReplies"),
   assistantShortcut: document.querySelector("#assistantShortcut"),
 };
@@ -185,7 +184,6 @@ const sendAssistantMessage = async () => {
   appendChatMessage(message, "user");
   elements.assistantInput.value = "";
   elements.assistantSend.disabled = true;
-  elements.voiceButton.disabled = true;
   elements.assistantForm.dataset.state = "loading";
   elements.assistantStatus.textContent = "正在思考";
   try {
@@ -209,7 +207,6 @@ const sendAssistantMessage = async () => {
     elements.assistantForm.dataset.state = "error";
   } finally {
     elements.assistantSend.disabled = false;
-    elements.voiceButton.disabled = false;
     elements.assistantInput.focus();
     window.setTimeout(() => delete elements.assistantForm.dataset.state, 1200);
   }
@@ -267,42 +264,6 @@ elements.assistantInput.addEventListener("keydown", (event) => {
     elements.assistantForm.requestSubmit();
   }
 });
-
-// SpeechRecognition 兼容标准名称和 Chromium 的前缀名称。
-const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-if (SpeechRecognition) {
-  // recognition 是负责把中文语音转换成文字的浏览器识别器。
-  const recognition = new SpeechRecognition();
-  recognition.lang = "zh-CN";
-  recognition.interimResults = false;
-  recognition.maxAlternatives = 1;
-  recognition.addEventListener("start", () => {
-    elements.voiceButton.disabled = true;
-    elements.voiceButton.dataset.listening = "true";
-    elements.assistantStatus.textContent = "正在聆听";
-  });
-  recognition.addEventListener("result", (event) => {
-    elements.assistantInput.value = event.results[0][0].transcript;
-    elements.assistantForm.requestSubmit();
-  });
-  recognition.addEventListener("error", () => {
-    elements.assistantStatus.textContent = "语音识别失败，请使用文字输入";
-  });
-  recognition.addEventListener("end", () => {
-    elements.voiceButton.dataset.listening = "false";
-    if (!elements.assistantSend.disabled) elements.voiceButton.disabled = false;
-    if (elements.assistantStatus.textContent === "正在聆听") elements.assistantStatus.textContent = "";
-  });
-  elements.voiceButton.addEventListener("click", () => {
-    try {
-      recognition.start();
-    } catch {
-      elements.assistantStatus.textContent = "语音识别尚未结束";
-    }
-  });
-} else {
-  elements.voiceButton.hidden = true;
-}
 
 // 对话快捷按钮把键盘焦点移动到消息输入框。
 elements.assistantShortcut.addEventListener("click", () => {

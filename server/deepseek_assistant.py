@@ -23,6 +23,8 @@ ALLOWED_MODES = {"automatic", "manual"}
 ALLOWED_INTENTS = {"chat", "control", "time", "weather"}
 # 浏览器最多向模型补充的历史消息条数。
 MAX_HISTORY_MESSAGES = 8
+# UNSUPPORTED_FUNCTION_MESSAGE 是越过当前功能边界时统一显示的提示。
+UNSUPPORTED_FUNCTION_MESSAGE = "不支持当前功能。"
 
 
 # AssistantError 表示可以安全显示给网页用户的对话处理错误。
@@ -82,7 +84,7 @@ def build_system_prompt(state_text):
 4. 用户要控制任一灯时，如果当前是 automatic，先加入 set_mode=manual，再加入灯动作。
 5. 用户说开启自动检测、阈值检测或自动模式时，只设置 automatic，不再设置单灯。
 6. 用户只问设备状态时使用 control，actions 返回空数组，并根据当前状态回答。
-7. 不允许修改阈值、网络、ADC、采样率或执行动作白名单之外的任何操作。
+7. 不允许修改阈值、网络、ADC、采样率或执行动作白名单之外的任何操作；用户提出这些要求时，使用 chat 意图并只回复“不支持当前功能。”。
 8. 回复像自然对话：直接回答，不说“已为您”“操作成功”“有什么需要尽管说”等模板话，不复述用户整句话，不虚构信息。
 9. 控制意图只简短确认理解，例如“好，B 灯打开。”，不要声称硬件已经完成；真实执行结果由后端单独显示。
 """
@@ -93,18 +95,18 @@ def normalize_history(history):
     if history is None:
         return []
     if not isinstance(history, list):
-        raise AssistantError("对话历史格式无效。")
+        raise AssistantError(UNSUPPORTED_FUNCTION_MESSAGE)
     # normalized_history 只保留用户和助手的纯文本消息。
     normalized_history = []
     for item in history[-MAX_HISTORY_MESSAGES:]:
         if not isinstance(item, dict):
-            raise AssistantError("对话历史包含无效消息。")
+            raise AssistantError(UNSUPPORTED_FUNCTION_MESSAGE)
         # role 是历史消息的发言方。
         role = item.get("role")
         # content 是经过清理的历史消息正文。
         content = item.get("content")
         if role not in {"user", "assistant"} or not isinstance(content, str):
-            raise AssistantError("对话历史包含无效角色或内容。")
+            raise AssistantError(UNSUPPORTED_FUNCTION_MESSAGE)
         content = content.strip()
         if not content or len(content) > 500:
             raise AssistantError("对话历史消息为空或过长。")
@@ -149,7 +151,7 @@ def call_deepseek(messages, temperature=0.35):
         content = response_data["choices"][0]["message"]["content"]
         return json.loads(content)
     except (KeyError, IndexError, TypeError, json.JSONDecodeError) as error:
-        raise AssistantError("DeepSeek 返回的数据格式无效。") from error
+        raise AssistantError(UNSUPPORTED_FUNCTION_MESSAGE) from error
 
 
 # 调用 DeepSeek，让模型判断意图并返回受限执行计划。
@@ -192,14 +194,14 @@ def request_weather_reply(message, weather_data):
     # reply 是最终显示和朗读的中文内容。
     reply = response.get("reply") if isinstance(response, dict) else None
     if not isinstance(reply, str) or not reply.strip() or len(reply) > 700:
-        raise AssistantError("DeepSeek 返回的天气回复无效。")
+        raise AssistantError(UNSUPPORTED_FUNCTION_MESSAGE)
     return reply.strip()
 
 
 # 严格校验模型提出的动作，任何未知字段或取值都不会执行。
 def validate_control_plan(plan):
     if not isinstance(plan, dict):
-        raise AssistantError("DeepSeek 没有返回有效的控制计划。")
+        raise AssistantError(UNSUPPORTED_FUNCTION_MESSAGE)
     # reply 是显示在对话框中的中文回复。
     reply = plan.get("reply")
     # actions 是待执行的模式或灯光操作列表。
@@ -209,25 +211,25 @@ def validate_control_plan(plan):
     # weather_city 是天气查询需要的城市名，其他意图应为空。
     weather_city = plan.get("weather_city")
     if intent not in ALLOWED_INTENTS:
-        raise AssistantError("DeepSeek 返回了无法识别的对话意图。")
+        raise AssistantError(UNSUPPORTED_FUNCTION_MESSAGE)
     if not isinstance(reply, str) or not reply.strip():
-        raise AssistantError("DeepSeek 回复内容为空。")
+        raise AssistantError(UNSUPPORTED_FUNCTION_MESSAGE)
     if len(reply) > 500:
-        raise AssistantError("DeepSeek 回复内容过长。")
+        raise AssistantError(UNSUPPORTED_FUNCTION_MESSAGE)
     if not isinstance(actions, list) or len(actions) > MAX_ACTIONS:
-        raise AssistantError("DeepSeek 返回的动作数量无效。")
+        raise AssistantError(UNSUPPORTED_FUNCTION_MESSAGE)
     if intent != "control" and actions:
-        raise AssistantError("非控制类对话不能执行设备操作。")
+        raise AssistantError(UNSUPPORTED_FUNCTION_MESSAGE)
     if weather_city is not None and (not isinstance(weather_city, str) or len(weather_city.strip()) > 80):
-        raise AssistantError("DeepSeek 返回的城市名称无效。")
+        raise AssistantError(UNSUPPORTED_FUNCTION_MESSAGE)
     if intent != "weather" and weather_city is not None:
-        raise AssistantError("非天气类对话不能请求城市天气。")
+        raise AssistantError(UNSUPPORTED_FUNCTION_MESSAGE)
 
     # validated_actions 只保存通过白名单校验的动作。
     validated_actions = []
     for action in actions:
         if not isinstance(action, dict):
-            raise AssistantError("DeepSeek 返回了无法识别的动作。")
+            raise AssistantError(UNSUPPORTED_FUNCTION_MESSAGE)
         # action_type 表示切换模式或设置 LED。
         action_type = action.get("type")
         if action_type == "set_mode" and action.get("mode") in ALLOWED_MODES:
@@ -241,7 +243,7 @@ def validate_control_plan(plan):
                 {"type": action_type, "role": action["role"], "on": action["on"]}
             )
         else:
-            raise AssistantError("DeepSeek 提出了项目不允许执行的操作。")
+            raise AssistantError(UNSUPPORTED_FUNCTION_MESSAGE)
     return {
         "intent": intent,
         "reply": reply.strip(),

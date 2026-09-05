@@ -288,7 +288,7 @@ def set_device_led(role):
 def assistant_command():
     # payload 是网页发送的单轮对话 JSON。
     payload = request.get_json(silent=True) or {}
-    # message 是用户输入或语音识别得到的自然语言指令。
+    # message 是用户在网页文本框中输入的自然语言内容。
     message = payload.get("message")
     # history 是浏览器保存的最近几轮对话，用于理解连续追问。
     history = payload.get("history", [])

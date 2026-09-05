@@ -2,7 +2,12 @@ import unittest
 from unittest.mock import patch
 
 from server import app as server_app
-from server.deepseek_assistant import AssistantError, normalize_history, validate_control_plan
+from server.deepseek_assistant import (
+    UNSUPPORTED_FUNCTION_MESSAGE,
+    AssistantError,
+    normalize_history,
+    validate_control_plan,
+)
 
 
 # AssistantPlanTests 验证模型输出在执行前必须满足本地安全边界。
@@ -16,7 +21,7 @@ class AssistantPlanTests(unittest.TestCase):
             "weather_city": None,
             "actions": [{"type": "set_led", "role": "master", "on": True}],
         }
-        with self.assertRaises(AssistantError):
+        with self.assertRaisesRegex(AssistantError, f"^{UNSUPPORTED_FUNCTION_MESSAGE}$"):
             validate_control_plan(plan)
 
     # test_control_action_is_whitelisted 确认合法控制动作能够通过校验。

@@ -29,6 +29,8 @@ test("chat input interaction", async ({ page }) => {
   await page.goto("http://127.0.0.1:5000/", { waitUntil: "commit" });
   await page.locator("#assistantSection").waitFor();
   await expect(page.locator("#assistantShortcut svg")).toBeVisible();
+  await expect(page.locator("#chatLog")).toBeEmpty();
+  await expect(page.locator("#voiceButton")).toHaveCount(0);
   await page.locator("#assistantInput").fill("你好");
   await expect(page.locator("#assistantSend")).toBeEnabled();
   await expect(page.locator("#assistantInput")).toHaveValue("你好");

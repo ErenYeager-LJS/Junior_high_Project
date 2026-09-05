@@ -45,8 +45,6 @@ main { padding-block: var(--space-xl) var(--space-3xl); }
 .assistant-form textarea { width: 100%; min-height: 54px; max-height: 130px; resize: vertical; padding: var(--space-sm) var(--space-md); border: var(--rule-thin) solid var(--color-rule-strong); border-radius: var(--radius-sm); background: var(--color-surface); color: var(--color-ink); }
 .assistant-actions { display: flex; align-items: stretch; gap: var(--space-xs); }
 .assistant-actions button { min-width: 68px; padding-inline: var(--space-md); border: var(--rule-thin) solid var(--color-rule-strong); border-radius: var(--radius-sm); cursor: pointer; }
-.voice-button { background: var(--color-surface); color: var(--color-ink); }
-.voice-button[data-listening="true"] { border-color: var(--color-warning); background: var(--color-warning-soft); color: var(--color-warning-ink); }
 .send-button { border-color: var(--color-accent) !important; background: var(--color-accent); color: var(--color-surface); }
 .assistant-actions button:disabled { cursor: wait; opacity: .5; }
 .assistant-status { min-height: 1.6em; margin-block-start: var(--space-xs); color: var(--color-muted); font-size: var(--text-sm); }
@@ -321,9 +319,10 @@ body {
 
 .assistant-actions {
   display: grid;
-  grid-template-columns: auto 44px;
+  grid-template-columns: 44px;
   grid-column: 1 / -1;
   align-content: end;
+  justify-content: end;
 }
 
 .assistant-actions button {
@@ -331,22 +330,11 @@ body {
   padding-inline: var(--space-md);
 }
 
-.voice-button {
-  background: var(--color-surface);
-  color: var(--color-ink);
-}
-
 .send-button {
   padding: 0;
   border-color: var(--color-accent) !important;
   background: var(--color-accent);
   color: var(--color-accent-ink);
-}
-
-.voice-button[data-listening="true"] {
-  border-color: var(--color-warning);
-  background: var(--color-warning-soft);
-  color: var(--color-warning-ink);
 }
 
 .assistant-status {
@@ -472,7 +460,6 @@ button:active {
     background: var(--color-accent);
   }
 
-  .voice-button:hover,
   .segmented button:hover {
     background: var(--color-paper-2);
   }

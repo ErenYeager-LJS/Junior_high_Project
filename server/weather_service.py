@@ -74,7 +74,7 @@ def request_json(base_url, parameters):
             if attempt == WEATHER_REQUEST_ATTEMPTS - 1:
                 raise WeatherError("实时天气服务暂时无法连接。") from last_error
     if not isinstance(response_data, dict):
-        raise WeatherError("实时天气服务返回了无法识别的数据。")
+        raise WeatherError("实时天气数据暂不可用。")
     return response_data
 
 
