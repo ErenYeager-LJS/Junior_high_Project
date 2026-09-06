@@ -83,23 +83,23 @@
         <section class="devices" aria-label="设备状态与手动控制">
         <article class="device" data-device="slave_a">
           <header class="device-head">
-            <div><p class="eyebrow">COM11 / 从机 A</p><h2>ADC 采集端</h2></div>
+            <div><p class="eyebrow">COM11 / 从机 A</p><h2>电流与继电器</h2></div>
             <span class="device-online" id="slave_aOnline">离线</span>
           </header>
           <div class="device-body">
-            <div class="lamp" id="slave_aLamp" aria-label="从机 A 灯状态"><span></span></div>
+            <div class="lamp" id="slave_aLamp" aria-label="从机 A 继电器状态"><span></span></div>
             <dl class="metrics">
-              <div><dt>GPIO4 LED</dt><dd id="slave_aLed">—</dd></div>
-              <div><dt>A0 电压</dt><dd id="adcVoltage">—</dd></div>
-              <div><dt>A0 原始值</dt><dd id="adcRaw">—</dd></div>
+              <div><dt>GPIO4 继电器</dt><dd id="slave_aLed">—</dd></div>
+              <div><dt>实时电流</dt><dd id="ina219Current">—</dd></div>
+              <div><dt>INA219</dt><dd id="ina219State">—</dd></div>
               <div><dt>设备地址</dt><dd id="slave_aIp">—</dd></div>
             </dl>
           </div>
           <div class="manual-control">
-            <span>手动控制</span>
-            <div class="segmented" role="group" aria-label="从机 LED 手动控制">
-              <button type="button" data-role="slave_a" data-led="true">打开</button>
-              <button type="button" data-role="slave_a" data-led="false">关闭</button>
+            <span>继电器控制</span>
+            <div class="segmented" role="group" aria-label="从机 A 继电器控制">
+              <button type="button" data-relay-state="true">吸合</button>
+              <button type="button" data-relay-state="false">释放</button>
             </div>
           </div>
         </article>

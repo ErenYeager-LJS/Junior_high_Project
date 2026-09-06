@@ -41,6 +41,26 @@ test("chat input interaction", async ({ page }) => {
 });
 
 
+// 继电器测试确认自动模式下也能发出命令，且请求不会实际操作测试现场硬件。
+test("relay control enters manual mode", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 900 });
+  await page.goto("http://127.0.0.1:5000/", { waitUntil: "commit" });
+  // requestPromise 捕获网页发出的继电器命令。
+  const requestPromise = page.waitForRequest((request) => request.url().endsWith("/api/relay-command"));
+  await page.route("**/api/relay-command", async (route) => {
+    await route.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify({ok: true, role: "slave_a", relay_on: true, threshold_enabled: false}),
+    });
+  });
+  await page.locator("[data-relay-state='true']").click();
+  // relayRequest 是浏览器实际提交给 Flask 的 JSON 请求。
+  const relayRequest = await requestPromise;
+  expect(relayRequest.postDataJSON()).toEqual({on: true});
+  await expect(page.locator("#commandStatus")).toContainText("继电器吸合指令已发送");
+});
+
+
 // TF 模式测试确认先选组合、再输入本次时间，并且不会把时间写入新模式。
 test("TF mode selection and run time interaction", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 900 });

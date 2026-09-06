@@ -568,6 +568,24 @@ def set_device_led(role):
     return jsonify(ok=True, role=role, led=led)
 
 
+@app.post("/api/relay-command")
+# set_relay 保存从机 A GPIO4 继电器的目标状态，并自动进入手动模式。
+def set_relay():
+    # payload 是网页提交的继电器命令 JSON。
+    payload = request.get_json(silent=True) or {}
+    # relay_on 是继电器的逻辑状态；true 表示让低电平触发模块吸合。
+    relay_on = payload.get("on")
+    if not isinstance(relay_on, bool):
+        return jsonify(error="on must be a JSON boolean"), 400
+    with state_lock:
+        # 继电器是用户直接控制，收到命令时结束定时模式并退出自动检测。
+        cancel_timed_mode()
+        control["threshold_enabled"] = False
+        control["manual_led"]["slave_a"] = relay_on
+    return jsonify(ok=True, role="slave_a", relay_on=relay_on,
+                   threshold_enabled=False)
+
+
 @app.post("/api/assistant-command")
 # assistant_command 处理聊天、时间、天气和设备控制四类自然语言请求。
 def assistant_command():

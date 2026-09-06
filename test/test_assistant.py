@@ -149,6 +149,20 @@ class AssistantEndpointTests(unittest.TestCase):
         self.assertTrue(master_config["ina219_ready"])
         self.assertAlmostEqual(master_config["slave_current_ma"], 100.25)
 
+    # test_relay_command_enters_manual_mode 确认继电器命令会退出自动模式并控制 A 的 GPIO4。
+    def test_relay_command_enters_manual_mode(self):
+        # response 模拟网页点击“吸合”按钮。
+        response = self.client.post("/api/relay-command", json={"on": True})
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(server_app.control["threshold_enabled"])
+        self.assertTrue(server_app.control["manual_led"]["slave_a"])
+        self.assertTrue(response.get_json()["relay_on"])
+
+        # release 模拟网页点击“释放”按钮。
+        release = self.client.post("/api/relay-command", json={"on": False})
+        self.assertEqual(release.status_code, 200)
+        self.assertFalse(server_app.control["manual_led"]["slave_a"])
+
     # test_same_mode_accepts_different_run_times 确认同一组合每次都能使用不同时间。
     def test_same_mode_accepts_different_run_times(self):
         # first 是第一次让模式 1 运行 2 秒的响应。

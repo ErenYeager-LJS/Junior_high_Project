@@ -7,6 +7,7 @@ const elements = {
   alertBand: document.querySelector("#alertBand"),
   commandStatus: document.querySelector("#commandStatus"),
   manualButtons: document.querySelectorAll("[data-role][data-led]"),
+  relayButtons: document.querySelectorAll("[data-relay-state]"),
   adcChart: document.querySelector("#adcChart"),
   assistantForm: document.querySelector("#assistantForm"),
   assistantInput: document.querySelector("#assistantInput"),
@@ -233,10 +234,12 @@ const render = (status) => {
   elements.thresholdEnabled.checked = status.threshold_enabled;
   elements.modeLabel.textContent = status.threshold_enabled ? "自动检测" : "手动控制";
   elements.manualButtons.forEach((button) => (button.disabled = status.threshold_enabled));
+  // 继电器按钮在自动模式也可点击，后端会先安全切换为手动模式。
+  elements.relayButtons.forEach((button) => (button.disabled = !slave_a.online));
   renderModeList(status);
   elements.alertBand.hidden = !status.alert_message;
-  setText("adcVoltage", Number.isFinite(status.adc_voltage) ? `${status.adc_voltage.toFixed(3)} V` : null);
-  setText("adcRaw", slave_a.adc_latest);
+  setText("ina219Current", Number.isFinite(slave_a.current_ma) ? `${slave_a.current_ma.toFixed(1)} mA` : null);
+  setText("ina219State", slave_a.ina219_ready ? "正常" : "未连接");
   setText("thresholdResult", status.slave_over_threshold ? "超过 0.600 V" : "未超过阈值");
   setText("masterAlert", status.alert_message || "无告警");
   setText("sampleRate", Number.isFinite(status.effective_sample_rate_hz) ? `${status.effective_sample_rate_hz} Hz（目标 ${status.sample_rate_hz}）` : null);
@@ -453,6 +456,22 @@ elements.manualButtons.forEach((button) => button.addEventListener("click", asyn
     elements.commandStatus.textContent = "指令已发送，等待设备执行";
   } catch {
     elements.commandStatus.textContent = "指令发送失败，请确认已关闭阈值检测";
+  }
+  await poll();
+}));
+
+// 继电器按钮直接控制从机 A 的 GPIO4，并由后端自动退出自动检测模式。
+elements.relayButtons.forEach((button) => button.addEventListener("click", async () => {
+  // relayOn 是用户本次要求的继电器逻辑状态，true 表示吸合。
+  const relayOn = button.dataset.relayState === "true";
+  elements.relayButtons.forEach((item) => (item.disabled = true));
+  try {
+    await requestJson("/api/relay-command", { on: relayOn });
+    elements.commandStatus.textContent = relayOn
+      ? "继电器吸合指令已发送，已进入手动控制"
+      : "继电器释放指令已发送，已进入手动控制";
+  } catch {
+    elements.commandStatus.textContent = "继电器指令发送失败，请检查从机 A 连接";
   }
   await poll();
 }));
