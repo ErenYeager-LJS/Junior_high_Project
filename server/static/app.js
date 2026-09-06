@@ -1,6 +1,7 @@
 // elements 集中保存页面中需要读写的控件，避免重复查询 DOM。
 const elements = {
   networkState: document.querySelector("#networkState"),
+  tfState: document.querySelector("#tfState"),
   thresholdEnabled: document.querySelector("#thresholdEnabled"),
   modeLabel: document.querySelector("#modeLabel"),
   alertBand: document.querySelector("#alertBand"),
@@ -23,9 +24,12 @@ const elements = {
   timedModeStatus: document.querySelector("#timedModeStatus"),
   modeForm: document.querySelector("#modeForm"),
   modeName: document.querySelector("#modeName"),
-  modeDuration: document.querySelector("#modeDuration"),
   modeSave: document.querySelector("#modeSave"),
   modeFormStatus: document.querySelector("#modeFormStatus"),
+  modeRunForm: document.querySelector("#modeRunForm"),
+  selectedModeName: document.querySelector("#selectedModeName"),
+  runDuration: document.querySelector("#runDuration"),
+  modeRun: document.querySelector("#modeRun"),
 };
 
 // waveform 保存网页当前绘制的 A0 采样点。
@@ -40,6 +44,8 @@ let preferredVoice = null;
 let renderedModeSignature = "";
 // lastTfCommandPending 保存上一轮写卡等待状态，用于识别主机刚刚确认完成的时刻。
 let lastTfCommandPending = false;
+// selectedModeId 保存用户先选中的灯光组合，执行时间会在下一步单独读取。
+let selectedModeId = null;
 
 // setText 设置指标文本；没有数据时统一显示破折号。
 const setText = (id, value) => {
@@ -81,6 +87,9 @@ const renderModeList = (status) => {
   elements.modeCount.textContent = `${modes.length} / 12`;
   elements.tfCardStatus.textContent = status.tf_write_error
     || (status.tf_command_pending ? "正在写入 TF 卡" : status.tf_card_ready ? "TF 卡已连接" : "TF 卡不可用");
+  elements.tfState.dataset.ready = String(status.tf_card_ready && !status.tf_write_error);
+  elements.tfState.lastElementChild.textContent = status.tf_write_error
+    || (status.tf_command_pending ? "TF 卡写入中" : status.tf_card_ready ? "TF 卡可用" : "TF 卡不可用");
   if (lastTfCommandPending && !status.tf_command_pending) {
     elements.modeFormStatus.textContent = status.tf_write_error || "已同步到 TF 卡";
   }
@@ -90,8 +99,12 @@ const renderModeList = (status) => {
     : "A0 高于 0.600 V 时四机同步点亮。";
   elements.modeSave.disabled = !status.tf_card_ready || status.tf_command_pending || modes.length >= 12;
 
+  if (selectedModeId && !modes.some((mode) => mode.id === selectedModeId)) selectedModeId = null;
   // signature 只包含会改变模式卡片结构和选中态的字段。
-  const signature = JSON.stringify([modes, activeMode.id, status.tf_command_pending]);
+  const signature = JSON.stringify([
+    modes, activeMode.id, selectedModeId, status.tf_card_ready,
+    status.tf_command_pending, status.tf_write_error,
+  ]);
   if (signature === renderedModeSignature) return;
   renderedModeSignature = signature;
   elements.modeList.replaceChildren();
@@ -100,6 +113,7 @@ const renderModeList = (status) => {
     const item = document.createElement("article");
     item.className = "mode-item";
     item.dataset.active = String(mode.id === activeMode.id);
+    item.dataset.selected = String(mode.id === selectedModeId);
     // copy 包含模式名称、时长和四盏灯摘要。
     const copy = document.createElement("div");
     copy.className = "mode-item-copy";
@@ -109,11 +123,7 @@ const renderModeList = (status) => {
     // title 是只使用 textContent 写入的用户模式名称。
     const title = document.createElement("strong");
     title.textContent = mode.name;
-    // duration 是模式的持久化持续时间。
-    const duration = document.createElement("span");
-    duration.className = "mode-duration";
-    duration.textContent = `${mode.duration_seconds} 秒`;
-    titleLine.append(title, duration);
+    titleLine.append(title);
     // summary 逐个显示主机与三个从机的亮灭设置。
     const summary = document.createElement("div");
     summary.className = "mode-led-summary";
@@ -125,16 +135,26 @@ const renderModeList = (status) => {
       summary.append(state);
     });
     copy.append(titleLine, summary);
-    // actions 保存执行和可选的删除图标按钮。
+    // actions 保存选择和可选的删除图标按钮。
     const actions = document.createElement("div");
     actions.className = "mode-item-actions";
-    actions.append(makeIconButton("play", "run-mode", `执行 ${mode.name}`, mode.id));
+    // selectButton 先选择组合，时间在列表下方的独立执行区输入。
+    const selectButton = makeIconButton(
+      mode.id === selectedModeId ? "check" : "mouse-pointer-2",
+      "select-mode", mode.id === selectedModeId ? `已选择 ${mode.name}` : `选择 ${mode.name}`, mode.id,
+    );
+    selectButton.setAttribute("aria-pressed", String(mode.id === selectedModeId));
+    actions.append(selectButton);
     if (!['mode_1', 'mode_2'].includes(mode.id)) {
       actions.append(makeIconButton("trash-2", "delete-mode", `删除 ${mode.name}`, mode.id));
     }
     item.append(copy, actions);
     elements.modeList.append(item);
   });
+  // selectedMode 是本轮选中的完整模式对象。
+  const selectedMode = modes.find((mode) => mode.id === selectedModeId);
+  elements.selectedModeName.textContent = selectedMode ? selectedMode.name : "先选择一个组合";
+  elements.modeRun.disabled = !selectedMode || !status.tf_card_ready;
   if (window.lucide) window.lucide.createIcons({ attrs: { "stroke-width": 1.8 } });
 };
 
@@ -322,6 +342,8 @@ const poll = async () => {
   } catch {
     elements.networkState.dataset.online = "false";
     elements.networkState.lastElementChild.textContent = "网站连接中断";
+    elements.tfState.dataset.ready = "false";
+    elements.tfState.lastElementChild.textContent = "TF 卡状态未知";
   }
 };
 
@@ -342,6 +364,7 @@ elements.thresholdEnabled.addEventListener("change", async () => {
 // 顶部模式入口打开独立管理窗口。
 elements.modeShortcut.addEventListener("click", () => {
   elements.modeDialog.showModal();
+  window.setTimeout(() => document.querySelector(".select-mode")?.focus(), 0);
 });
 
 // 关闭按钮退出模式窗口，但不影响正在运行的模式。
@@ -352,24 +375,25 @@ elements.modeDialog.addEventListener("click", (event) => {
   if (event.target === elements.modeDialog) elements.modeDialog.close();
 });
 
-// 模式列表统一处理执行和删除按钮，列表刷新后无需重复绑定事件。
+// 模式列表统一处理选择和删除按钮，列表刷新后无需重复绑定事件。
 elements.modeList.addEventListener("click", async (event) => {
   // button 是本次点击位置向上找到的模式操作按钮。
   const button = event.target.closest("button[data-mode-id]");
   if (!button) return;
   // modeId 是 TF 卡内模式的唯一编号。
   const modeId = button.dataset.modeId;
-  if (button.classList.contains("delete-mode") && !window.confirm("确定从 TF 卡删除这个模式吗？")) return;
+  if (button.classList.contains("select-mode")) {
+    selectedModeId = modeId;
+    renderedModeSignature = "";
+    await poll();
+    elements.runDuration.focus({ preventScroll: true });
+    return;
+  }
+  if (!window.confirm("确定从 TF 卡删除这个模式吗？")) return;
   button.disabled = true;
   try {
-    if (button.classList.contains("run-mode")) {
-      // result 包含实际启动模式的名称和持续时间。
-      const result = await requestJson(`/api/tf-modes/${modeId}/activate`, {});
-      elements.modeFormStatus.textContent = `${result.mode.name} 已开始，${result.mode.duration_seconds} 秒后恢复自动检测`;
-    } else {
-      await requestJson(`/api/tf-modes/${modeId}/delete`, {});
-      elements.modeFormStatus.textContent = "正在从 TF 卡删除";
-    }
+    await requestJson(`/api/tf-modes/${modeId}/delete`, {});
+    elements.modeFormStatus.textContent = "正在从 TF 卡删除";
     await poll();
   } catch (error) {
     elements.modeFormStatus.textContent = error.message || "模式操作失败";
@@ -378,11 +402,31 @@ elements.modeList.addEventListener("click", async (event) => {
   }
 });
 
-// 新建模式表单把名称、时长和四盏灯状态排队写入 TF 卡。
+// 执行表单在用户选好组合后，单独提交这一次的持续时间。
+elements.modeRunForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!selectedModeId) return;
+  // durationSeconds 是本次执行时间，不会保存进 TF 卡组合。
+  const durationSeconds = Number.parseInt(elements.runDuration.value, 10);
+  elements.modeRun.disabled = true;
+  elements.modeFormStatus.textContent = "正在启动模式";
+  try {
+    // result 是 Flask 实际接受的模式与本次时间。
+    const result = await requestJson(`/api/tf-modes/${selectedModeId}/activate`, {
+      duration_seconds: durationSeconds,
+    });
+    elements.modeFormStatus.textContent = `${result.mode.name} 已开始，${result.duration_seconds} 秒后恢复自动检测`;
+    await poll();
+  } catch (error) {
+    elements.modeFormStatus.textContent = error.message || "模式启动失败";
+  } finally {
+    await poll();
+  }
+});
+
+// 新建模式表单只把名称和四盏灯状态排队写入 TF 卡。
 elements.modeForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  // durationSeconds 是用户输入并转成整数的持续时间。
-  const durationSeconds = Number.parseInt(elements.modeDuration.value, 10);
   // ledStates 逐项读取四个复选框的逻辑状态。
   const ledStates = Object.fromEntries(
     ["master", "slave_a", "slave_b", "slave_c"].map((role) => [role, elements.modeForm.elements[role].checked]),
@@ -391,10 +435,9 @@ elements.modeForm.addEventListener("submit", async (event) => {
   elements.modeFormStatus.textContent = "正在保存到 TF 卡";
   try {
     await requestJson("/api/tf-modes", {
-      name: elements.modeName.value.trim(), duration_seconds: durationSeconds, led_states: ledStates,
+      name: elements.modeName.value.trim(), led_states: ledStates,
     });
     elements.modeForm.reset();
-    elements.modeDuration.value = "10";
     await poll();
   } catch (error) {
     elements.modeFormStatus.textContent = error.message || "保存失败";
@@ -446,7 +489,10 @@ if (window.lucide) window.lucide.createIcons({ attrs: { "stroke-width": 1.8 } })
 // 启动时立即获取一次状态，避免页面先空白半秒。
 poll();
 // 带 #modes 的地址直接打开模式窗口，便于收藏和现场快速进入。
-if (window.location.hash === "#modes") elements.modeDialog.showModal();
+if (window.location.hash === "#modes") {
+  elements.modeDialog.showModal();
+  window.setTimeout(() => document.querySelector(".select-mode")?.focus(), 600);
+}
 // dashboardTimer 每半秒触发一次设备状态刷新。
 const dashboardTimer = window.setInterval(poll, 500);
 // chartResizeObserver 在波形容器尺寸改变后重新绘图。

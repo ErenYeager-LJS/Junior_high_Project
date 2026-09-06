@@ -3,8 +3,8 @@ from unittest.mock import patch
 
 from server import app as server_app
 from server.deepseek_assistant import (
-    UNSUPPORTED_FUNCTION_MESSAGE,
     AssistantError,
+    build_state_text,
     normalize_history,
     validate_control_plan,
 )
@@ -21,7 +21,7 @@ class AssistantPlanTests(unittest.TestCase):
             "weather_city": None,
             "actions": [{"type": "set_led", "role": "master", "on": True}],
         }
-        with self.assertRaisesRegex(AssistantError, f"^{UNSUPPORTED_FUNCTION_MESSAGE}$"):
+        with self.assertRaisesRegex(AssistantError, "不应执行"):
             validate_control_plan(plan)
 
     # test_control_action_is_whitelisted 确认合法控制动作能够通过校验。
@@ -41,18 +41,47 @@ class AssistantPlanTests(unittest.TestCase):
         self.assertEqual(validated["intent"], "control")
         self.assertEqual(len(validated["actions"]), 2)
 
-    # test_lighting_preset_is_whitelisted 确认两种组合模式能通过动作白名单。
-    def test_lighting_preset_is_whitelisted(self):
-        # plan 模拟用户要求切换到模式 1 时模型返回的单一动作。
+    # test_dynamic_tf_preset_is_whitelisted 确认 TF 卡动态模式和本次时间能通过动作白名单。
+    def test_dynamic_tf_preset_is_whitelisted(self):
+        # plan 模拟用户要求自定义模式运行 23 秒时模型返回的动作。
         plan = {
             "intent": "control",
-            "reply": "好，切换到模式 1。",
+            "reply": "好，晚自习模式运行 23 秒。",
             "weather_city": None,
-            "actions": [{"type": "set_preset", "preset": "mode_1"}],
+            "actions": [{"type": "set_preset", "preset": "mode_custom_7", "duration_seconds": 23}],
         }
         # validated 是经过本地白名单校验后的模式动作。
-        validated = validate_control_plan(plan)
-        self.assertEqual(validated["actions"], [{"type": "set_preset", "preset": "mode_1"}])
+        validated = validate_control_plan(plan, {"mode_1", "mode_custom_7"})
+        self.assertEqual(
+            validated["actions"],
+            [{"type": "set_preset", "preset": "mode_custom_7", "duration_seconds": 23}],
+        )
+
+    # test_unknown_tf_preset_is_rejected 确认模型不能执行卡内不存在的模式编号。
+    def test_unknown_tf_preset_is_rejected(self):
+        # plan 模拟模型引用了一条已经从 TF 卡删除的模式。
+        plan = {
+            "intent": "control", "reply": "准备执行。", "weather_city": None,
+            "actions": [{"type": "set_preset", "preset": "missing", "duration_seconds": 10}],
+        }
+        with self.assertRaisesRegex(AssistantError, "无法安全执行"):
+            validate_control_plan(plan, {"mode_1"})
+
+    # test_project_state_contains_tf_modes 确认模型上下文包含动态模式和 TF 卡状态。
+    def test_project_state_contains_tf_modes(self):
+        # state 模拟服务端提供给 DeepSeek 的完整项目状态。
+        state = {
+            "threshold_enabled": True, "slave_over_threshold": False,
+            "threshold_voltage": 0.6, "adc_voltage": 0.2,
+            "local_time": "2026-09-06T01:00:00+08:00", "tf_card_ready": True,
+            "tf_modes": [{"id": "mode_custom_2", "name": "晚自习", "led_states": {}}],
+            "active_timed_mode": {"id": None, "name": None, "deadline": None},
+            "devices": {role: {"online": True, "led": False} for role in server_app.DEVICE_ROLES},
+        }
+        # state_text 是实际送入系统提示的 JSON 文本。
+        state_text = build_state_text(state)
+        self.assertIn("晚自习", state_text)
+        self.assertIn('"ready": true', state_text)
 
     # test_weather_requires_empty_actions 确认天气查询只能读取数据，不能控制灯。
     def test_weather_requires_empty_actions(self):
@@ -86,6 +115,7 @@ class AssistantEndpointTests(unittest.TestCase):
         server_app.assistant_requests.clear()
         server_app.control["threshold_enabled"] = True
         server_app.control["manual_led"].update({role: False for role in server_app.DEVICE_ROLES})
+        server_app.cancel_timed_mode()
 
     # test_lighting_presets_are_atomic 确认两个网页模式会一次写入互为相反的四灯状态。
     def test_lighting_presets_are_atomic(self):
@@ -105,6 +135,35 @@ class AssistantEndpointTests(unittest.TestCase):
             mode_2_response.get_json()["led_states"],
             {"master": True, "slave_a": False, "slave_b": False, "slave_c": False},
         )
+
+    # test_same_mode_accepts_different_run_times 确认同一组合每次都能使用不同时间。
+    def test_same_mode_accepts_different_run_times(self):
+        # first 是第一次让模式 1 运行 2 秒的响应。
+        first = self.client.post("/api/tf-modes/mode_1/activate", json={"duration_seconds": 2})
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(first.get_json()["duration_seconds"], 2)
+        # second 是紧接着改为运行 5 秒的响应。
+        second = self.client.post("/api/tf-modes/mode_1/activate", json={"duration_seconds": 5})
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second.get_json()["duration_seconds"], 5)
+        # remaining 是服务端重新计算后的第二次倒计时，应接近 5 秒而非沿用 2 秒。
+        remaining = self.client.get("/api/dashboard").get_json()["active_timed_mode"]["remaining_seconds"]
+        self.assertGreaterEqual(remaining, 4)
+
+    # test_new_mode_does_not_store_duration 确认新模式只持久化灯光组合。
+    def test_new_mode_does_not_store_duration(self):
+        server_app.tf_mode_state.update(card_ready=True, pending_command=None)
+        # response 是不带持续时间的新建模式请求。
+        response = self.client.post("/api/tf-modes", json={
+            "name": "无固定时间", "led_states": {
+                "master": True, "slave_a": False, "slave_b": True, "slave_c": False,
+            },
+        })
+        self.assertEqual(response.status_code, 202)
+        # record 是准备写入 TF 卡的紧凑文本，保留字段固定为 0。
+        record = server_app.tf_mode_state["pending_command"]["record"]
+        self.assertIn("|0|1|0|1|0", record)
+        server_app.tf_mode_state["pending_command"] = None
 
     # test_weather_intent_uses_realtime_source 确认天气回答来自服务端实时数据。
     @patch.object(server_app, "request_weather_reply", return_value="南京现在大致晴朗，28.2 摄氏度。")

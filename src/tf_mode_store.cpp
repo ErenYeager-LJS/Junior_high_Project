@@ -15,8 +15,8 @@ constexpr char TEMP_MODE_FILE_PATH[] = "/MODES.NEW";
 constexpr char BACKUP_MODE_FILE_PATH[] = "/MODES.BAK";
 // DEFAULT_MODE_FILE_CONTENT 是首次使用时写入的两个基础模式。
 constexpr char DEFAULT_MODE_FILE_CONTENT[] =
-    "mode_1|%E6%A8%A1%E5%BC%8F%201|10|0|1|1|1\n"
-    "mode_2|%E6%A8%A1%E5%BC%8F%202|10|1|0|0|0\n";
+    "mode_1|%E6%A8%A1%E5%BC%8F%201|0|0|1|1|1\n"
+    "mode_2|%E6%A8%A1%E5%BC%8F%202|0|1|0|0|0\n";
 // MAX_MODE_FILE_BYTES 限制模式文件大小，避免异常文件耗尽 ESP8266 内存。
 constexpr size_t MAX_MODE_FILE_BYTES = 4096;
 // encodedModes 保存去掉换行后的模式列表，模式之间使用分号分隔。
@@ -28,7 +28,7 @@ uint32_t acknowledgedCommandId = 0;
 // lastCommandSucceeded 保存最近一次新增或删除操作的结果。
 bool lastCommandSucceeded = true;
 
-// isValidRecord 检查一行模式是否包含固定的八个字段且没有控制字符。
+// isValidRecord 检查一行模式是否包含固定的七个字段且没有控制字符。
 bool isValidRecord(const String& record) {
   if (record.isEmpty() || record.length() > 320 || record.indexOf('\n') >= 0 ||
       record.indexOf('\r') >= 0 || record.indexOf(';') >= 0) {
@@ -197,8 +197,11 @@ void tfModeStoreHandleCommand(uint32_t commandId, const String& operation,
   Serial.println(lastCommandSucceeded ? " PASS" : " FAIL");
 }
 
-// 返回当前从 TF 文件读出的紧凑模式列表。
-const String& tfModeStoreEncodedModes() { return encodedModes; }
+// 返回当前从 TF 文件读出的紧凑模式列表；缓存异常时先从卡内重新恢复。
+const String& tfModeStoreEncodedModes() {
+  if (encodedModes.isEmpty()) storeReady = readModeFile();
+  return encodedModes;
+}
 
 // 返回最近处理完成的命令编号，供 Flask 清除待执行命令。
 uint32_t tfModeStoreAcknowledgedCommandId() { return acknowledgedCommandId; }
@@ -206,7 +209,10 @@ uint32_t tfModeStoreAcknowledgedCommandId() { return acknowledgedCommandId; }
 // 返回最近一次命令的文件写入和回读结果。
 bool tfModeStoreLastCommandSucceeded() { return lastCommandSucceeded; }
 
-// 返回模式文件是否已经正常建立并可读取。
-bool tfModeStoreReady() { return storeReady; }
+// 返回模式文件是否已经正常建立并可读取；缓存丢失时重新读取真实文件确认。
+bool tfModeStoreReady() {
+  if (!storeReady || encodedModes.isEmpty()) storeReady = readModeFile();
+  return storeReady;
+}
 
 #endif

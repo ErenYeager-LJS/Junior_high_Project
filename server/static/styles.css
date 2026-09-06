@@ -116,7 +116,7 @@ body {
   inset-block-start: var(--space-sm);
   z-index: 20;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto auto;
   width: min(calc(100% - 2 * var(--space-md)), var(--layout-max));
   min-height: 56px;
   margin-inline: auto;
@@ -154,6 +154,26 @@ body {
 .network-state {
   min-height: 44px;
   padding-inline: var(--space-md);
+}
+
+.tf-state {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: var(--space-xs);
+  padding-inline: var(--space-sm);
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.tf-state svg {
+  width: 17px;
+  height: 17px;
+}
+
+.tf-state[data-ready="true"] {
+  color: var(--color-success-ink);
 }
 
 .assistant-shortcut,
@@ -662,6 +682,11 @@ button:active {
   border-color: var(--color-accent);
 }
 
+.mode-item[data-selected="true"] {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}
+
 .mode-item-copy {
   min-width: 0;
 }
@@ -703,9 +728,29 @@ button:active {
   gap: var(--space-xs);
 }
 
-.mode-item-actions .run-mode {
+.mode-item-actions .select-mode[aria-pressed="true"] {
   background: var(--color-ink);
   color: var(--color-surface);
+}
+
+.mode-run-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(140px, 190px) auto;
+  align-items: end;
+  gap: var(--space-md);
+  padding: var(--space-lg);
+  border-block-start: var(--rule-thin) solid var(--color-rule);
+  background: var(--color-paper-2);
+  color: var(--color-ink);
+}
+
+.mode-run-form h3 {
+  margin-block-start: var(--space-2xs);
+  font-size: var(--text-md);
+}
+
+.mode-run-duration {
+  color: var(--color-muted);
 }
 
 .mode-form {
@@ -714,7 +759,7 @@ button:active {
 
 .mode-form-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(150px, .55fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-md);
   margin-block-start: var(--space-md);
 }
@@ -842,6 +887,17 @@ button:active {
   .mode-form-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .mode-run-form {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+}
+
+@media (max-width: 48rem) {
+  .tf-state span {
+    display: none;
   }
 }
 

@@ -21,6 +21,10 @@
         <span class="status-dot" aria-hidden="true"></span>
         <span>等待设备</span>
       </div>
+      <div class="tf-state" id="tfState" data-ready="false" role="status" aria-live="polite">
+        <i data-lucide="sd-card" aria-hidden="true"></i>
+        <span>TF 卡同步中</span>
+      </div>
       <button class="mode-shortcut" id="modeShortcut" type="button">
         <i data-lucide="layers-3" aria-hidden="true"></i>
         <span>模式</span>
@@ -172,16 +176,27 @@
             <div class="mode-list" id="modeList"></div>
           </section>
 
+          <form class="mode-run-form" id="modeRunForm">
+            <div>
+              <p class="eyebrow">本次执行</p>
+              <h3 id="selectedModeName">先选择一个组合</h3>
+            </div>
+            <label class="field-control mode-run-duration">
+              <span>持续时间</span>
+              <span class="number-field"><input id="runDuration" name="run_duration" type="number" min="1" max="3600" value="10" required><span>秒</span></span>
+            </label>
+            <button class="primary-button" id="modeRun" type="submit" disabled>
+              <i data-lucide="play" aria-hidden="true"></i>
+              <span>执行</span>
+            </button>
+          </form>
+
           <form class="mode-form" id="modeForm">
             <h3>新建模式</h3>
             <div class="mode-form-grid">
               <label class="field-control">
                 <span>名称</span>
                 <input id="modeName" name="name" type="text" maxlength="24" required>
-              </label>
-              <label class="field-control">
-                <span>持续时间</span>
-                <span class="number-field"><input id="modeDuration" name="duration" type="number" min="1" max="3600" value="10" required><span>秒</span></span>
               </label>
             </div>
             <fieldset class="mode-led-fields">

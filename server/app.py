@@ -47,9 +47,9 @@ WAVEFORM_DISPLAY_POINTS = 2000
 DEVICE_ROLES = ("master", "slave_a", "slave_b", "slave_c")
 # DEFAULT_TF_MODES 是主机首次同步前供网页显示的两个基础模式。
 DEFAULT_TF_MODES = {
-    "mode_1": {"id": "mode_1", "name": "模式 1", "duration_seconds": 10,
+    "mode_1": {"id": "mode_1", "name": "模式 1",
                "led_states": {"master": False, "slave_a": True, "slave_b": True, "slave_c": True}},
-    "mode_2": {"id": "mode_2", "name": "模式 2", "duration_seconds": 10,
+    "mode_2": {"id": "mode_2", "name": "模式 2",
                "led_states": {"master": True, "slave_a": False, "slave_b": False, "slave_c": False}},
 }
 # MAX_TF_MODES 是 TF 卡中允许保存的最大模式数量。
@@ -166,13 +166,9 @@ def parse_tf_modes(encoded_data):
         try:
             # mode_name 是从百分号编码还原的网页显示名称。
             mode_name = unquote(fields[1], encoding="utf-8", errors="strict").strip()
-            # duration_seconds 是这个模式在自动恢复前持续的秒数。
-            duration_seconds = int(fields[2])
         except (UnicodeError, ValueError):
             continue
         if not mode_name or len(mode_name) > MAX_MODE_NAME_LENGTH:
-            continue
-        if not 1 <= duration_seconds <= MAX_MODE_DURATION_SECONDS:
             continue
         if any(value not in ("0", "1") for value in fields[3:]):
             continue
@@ -180,7 +176,7 @@ def parse_tf_modes(encoded_data):
         led_states = {role: fields[index + 3] == "1" for index, role in enumerate(DEVICE_ROLES)}
         parsed_modes[mode_id] = {
             "id": mode_id, "name": mode_name,
-            "duration_seconds": duration_seconds, "led_states": led_states,
+            "led_states": led_states,
         }
     return parsed_modes
 
@@ -191,8 +187,8 @@ def encode_tf_mode(mode):
     states = mode["led_states"]
     # encoded_name 避免中文、竖线或引号破坏串口和 JSON 协议。
     encoded_name = quote(mode["name"], safe="", encoding="utf-8", errors="strict")
-    # fields 是最终用竖线拼接的七个文本字段。
-    fields = [mode["id"], encoded_name, str(mode["duration_seconds"])]
+    # 第三个字段保留为 0，以便兼容已经部署的七字段 TF 文件格式；它不再代表固定时间。
+    fields = [mode["id"], encoded_name, "0"]
     fields.extend("1" if states[role] else "0" for role in DEVICE_ROLES)
     return "|".join(fields)
 
@@ -220,7 +216,7 @@ def active_lighting_preset():
 
 
 # apply_lighting_preset 关闭阈值检测，并一次性写入组合模式的四盏灯状态。
-def apply_lighting_preset(preset_name):
+def apply_lighting_preset(preset_name, duration_seconds):
     # selected_mode 是 TF 卡中与网页选择对应的完整模式。
     selected_mode = tf_mode_state["modes"][preset_name]
     # led_states 是该模式中四块设备各自应采用的目标状态。
@@ -228,7 +224,7 @@ def apply_lighting_preset(preset_name):
     control["threshold_enabled"] = False
     control["manual_led"].update(led_states)
     timed_mode.update(id=preset_name, name=selected_mode["name"],
-                      deadline=time() + selected_mode["duration_seconds"])
+                      deadline=time() + duration_seconds)
     events.appendleft({"type": "preset", "preset": preset_name, "timestamp": utc_label(time())})
 
 
@@ -260,6 +256,11 @@ def assistant_state(now):
         "threshold_enabled": control["threshold_enabled"],
         "slave_over_threshold": slave_over_threshold(),
         "local_time": local_datetime.isoformat(timespec="seconds"),
+        "threshold_voltage": THRESHOLD_VOLTAGE,
+        "adc_voltage": round((devices["slave_a"]["adc_latest"] or 0) / ADC_MAX_VALUE * ADC_REFERENCE_VOLTAGE, 3),
+        "tf_card_ready": tf_mode_state["card_ready"],
+        "tf_modes": list(tf_mode_state["modes"].values()),
+        "active_timed_mode": dict(timed_mode),
         "devices": {role: public_device(role, now) for role in DEVICE_ROLES},
     }
 
@@ -272,6 +273,8 @@ def apply_assistant_actions(actions):
         if action["type"] == "set_mode":
             proposed_threshold_enabled = action["mode"] == "automatic"
         elif action["type"] == "set_preset":
+            if action["preset"] not in tf_mode_state["modes"]:
+                raise AssistantError("这个 TF 模式刚刚发生了变化，请重新说一次。")
             proposed_threshold_enabled = False
         elif proposed_threshold_enabled:
             raise AssistantError("自动检测开启时不能单独控制 LED。")
@@ -291,8 +294,12 @@ def apply_assistant_actions(actions):
         if action["type"] == "set_preset":
             # preset_name 是已经通过白名单校验的组合模式名称。
             preset_name = action["preset"]
-            apply_lighting_preset(preset_name)
-            executed.append("模式 1 已启用" if preset_name == "mode_1" else "模式 2 已启用")
+            # duration_seconds 是本次执行使用的时间，不会写回 TF 卡模式。
+            duration_seconds = action["duration_seconds"]
+            apply_lighting_preset(preset_name, duration_seconds)
+            # mode_name 是当前动态 TF 模式的用户可见名称。
+            mode_name = tf_mode_state["modes"][preset_name]["name"]
+            executed.append(f"{mode_name} 已启用，将运行 {duration_seconds} 秒")
             continue
 
         # role 是已经通过白名单校验的设备名称。
@@ -434,10 +441,11 @@ def update_settings():
 @app.post("/api/lighting-preset/<preset_name>")
 # set_lighting_preset 把网页选择的组合模式原子地写入四块设备目标状态。
 def set_lighting_preset(preset_name):
-    if preset_name not in tf_mode_state["modes"]:
-        return jsonify(error="unknown lighting preset"), 404
+    # 旧接口保留 10 秒兼容行为；新版网页使用可传时间的 activate 接口。
     with state_lock:
-        apply_lighting_preset(preset_name)
+        if preset_name not in tf_mode_state["modes"]:
+            return jsonify(error="unknown lighting preset"), 404
+        apply_lighting_preset(preset_name, 10)
         # led_states 是返回网页核对的四块设备目标状态副本。
         led_states = dict(control["manual_led"])
     return jsonify(ok=True, preset=preset_name, threshold_enabled=False, led_states=led_states)
@@ -450,14 +458,10 @@ def create_tf_mode():
     payload = request.get_json(silent=True) or {}
     # mode_name 是去掉首尾空格后的用户模式名称。
     mode_name = payload.get("name", "").strip() if isinstance(payload.get("name"), str) else ""
-    # duration_seconds 是模式自动结束前的持续秒数。
-    duration_seconds = payload.get("duration_seconds")
     # led_states 是网页提交的四盏灯逻辑状态。
     led_states = payload.get("led_states")
     if not mode_name or len(mode_name) > MAX_MODE_NAME_LENGTH:
         return jsonify(error=f"模式名称应为 1 至 {MAX_MODE_NAME_LENGTH} 个字符"), 400
-    if isinstance(duration_seconds, bool) or not isinstance(duration_seconds, int) or not 1 <= duration_seconds <= MAX_MODE_DURATION_SECONDS:
-        return jsonify(error=f"持续时间应为 1 至 {MAX_MODE_DURATION_SECONDS} 秒"), 400
     if not isinstance(led_states, dict) or set(led_states) != set(DEVICE_ROLES):
         return jsonify(error="必须设置主机和 A、B、C 从机状态"), 400
     if any(not isinstance(led_states[role], bool) for role in DEVICE_ROLES):
@@ -480,7 +484,6 @@ def create_tf_mode():
         # new_mode 是等待持久化到 TF 卡的完整模式对象。
         new_mode = {
             "id": f"mode_custom_{custom_index}", "name": mode_name,
-            "duration_seconds": duration_seconds,
             "led_states": {role: led_states[role] for role in DEVICE_ROLES},
         }
         # command_id 是本次异步写卡操作的跟踪编号。
@@ -491,14 +494,21 @@ def create_tf_mode():
 @app.post("/api/tf-modes/<mode_id>/activate")
 # activate_tf_mode 立即执行卡内模式，并设置到期恢复自动检测的时间。
 def activate_tf_mode(mode_id):
+    # payload 保存用户为本次执行单独选择的持续时间。
+    payload = request.get_json(silent=True) or {}
+    # duration_seconds 不属于模式本身，每次点击执行都可以不同。
+    duration_seconds = payload.get("duration_seconds")
+    if isinstance(duration_seconds, bool) or not isinstance(duration_seconds, int) or not 1 <= duration_seconds <= MAX_MODE_DURATION_SECONDS:
+        return jsonify(error=f"本次时间应为 1 至 {MAX_MODE_DURATION_SECONDS} 秒"), 400
     with state_lock:
         update_timed_mode(time())
         if mode_id not in tf_mode_state["modes"]:
             return jsonify(error="模式不存在或尚未同步"), 404
-        apply_lighting_preset(mode_id)
+        apply_lighting_preset(mode_id, duration_seconds)
         # selected_mode 是刚刚开始执行的模式，用于构造网页确认信息。
         selected_mode = tf_mode_state["modes"][mode_id]
-    return jsonify(ok=True, mode=selected_mode, threshold_enabled=False)
+    return jsonify(ok=True, mode=selected_mode, duration_seconds=duration_seconds,
+                   threshold_enabled=False)
 
 
 @app.post("/api/tf-modes/<mode_id>/delete")
@@ -561,7 +571,9 @@ def assistant_command():
         # plan 是 DeepSeek 生成但尚未执行的候选计划。
         plan = request_control_plan(message, state_snapshot, history)
         # validated_plan 包含经过本地白名单校验的意图、回复和动作。
-        validated_plan = validate_control_plan(plan)
+        # allowed_presets 来自主机刚同步的 TF 卡，包含用户新建模式而非固定白名单。
+        allowed_presets = {mode["id"] for mode in state_snapshot["tf_modes"]}
+        validated_plan = validate_control_plan(plan, allowed_presets)
         # reply 是准备返回网页的自然语言回复。
         reply = validated_plan["reply"]
         # weather_data 保存实时天气源返回的可信观测；非天气请求保持为空。

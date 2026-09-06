@@ -19,14 +19,12 @@ MAX_ACTIONS = 5
 ALLOWED_ROLES = {"master", "slave_a", "slave_b", "slave_c"}
 # AI 可以切换的模式白名单。
 ALLOWED_MODES = {"automatic", "manual"}
-# AI 可以选择的组合灯光模式白名单。
-ALLOWED_PRESETS = {"mode_1", "mode_2"}
 # AI 可以识别的对话意图白名单。
 ALLOWED_INTENTS = {"chat", "control", "time", "weather"}
 # 浏览器最多向模型补充的历史消息条数。
 MAX_HISTORY_MESSAGES = 8
-# UNSUPPORTED_FUNCTION_MESSAGE 是越过当前功能边界时统一显示的提示。
-UNSUPPORTED_FUNCTION_MESSAGE = "不支持当前功能。"
+# INVALID_ASSISTANT_RESPONSE 是模型偶发返回非结构化内容时的温和重试提示。
+INVALID_ASSISTANT_RESPONSE = "我刚才没有整理好这条回答，请换个说法再问一次。"
 
 
 # AssistantError 表示可以安全显示给网页用户的对话处理错误。
@@ -58,7 +56,14 @@ def build_state_text(state):
     compact_state = {
         "mode": "automatic" if state["threshold_enabled"] else "manual",
         "a_over_threshold": state["slave_over_threshold"],
+        "threshold_voltage": state["threshold_voltage"],
+        "adc_voltage": state["adc_voltage"],
         "local_time": state["local_time"],
+        "tf_card": {
+            "ready": state["tf_card_ready"],
+            "modes": state["tf_modes"],
+        },
+        "active_timed_mode": state["active_timed_mode"],
         "devices": {
             role: {"online": devices[role]["online"], "led": devices[role]["led"]}
             for role in sorted(ALLOWED_ROLES)
@@ -69,28 +74,39 @@ def build_state_text(state):
 
 # 构造系统提示，让模型先判断聊天、实时信息或设备控制意图。
 def build_system_prompt(state_text):
-    return f"""你是一个沉着、自然、简洁的中文智能助手，同时可以控制 ESP8266 灯光。
+    return f"""你是这个 ESP8266 项目的常驻中文智能助手。你既是可以自然聊天的通用助手，也是熟悉本项目软硬件的操作员。
 当前状态：{state_text}
 
+项目知识：
+- 系统由 COM10 主机和 COM11/12/13 三个从机 A/B/C 组成，全部 LED 都是低电平点亮。
+- A 从机持续采集 A0；自动检测时，A0 高于 0.600 V 会使 A/B/C 从机和主机联动点亮。
+- 主机连接 1.8 寸 ST7735 TFT，显示 Wi-Fi、A0、检测模式和 A/B/C 灯状态。
+- 主机的 TF 卡保存用户定义的灯光组合。一个组合只包含名称与四盏灯的亮灭，不保存固定持续时间。
+- 每次执行 TF 模式时必须单独给出 duration_seconds；结束后系统自动恢复阈值检测。
+- Flask 网页运行在局域网电脑上，提供设备状态、手动灯控、ADC 波形、TF 模式和本对话助手。
 设备名称映射：主机=master，A从机=slave_a，B从机=slave_b，C从机=slave_c。
 模式：automatic 表示 A0 阈值自动联动，manual 表示四盏灯可分别控制。
-组合模式：mode_1 表示 A/B/C 全亮且主机灭；mode_2 表示 A/B/C 全灭且主机亮。
+TF 卡当前可用状态、动态模式编号、名称和灯光组合都在当前状态的 tf_card 中；必须按这里的实时列表识别内置或用户新增模式，不能只认识 mode_1 和 mode_2。
 只返回一个 JSON 对象，不要 Markdown：
 {{"intent":"chat或control或time或weather","reply":"自然的中文回复","weather_city":null,"actions":[]}}
 允许的动作只有：
 {{"type":"set_mode","mode":"automatic或manual"}}
-{{"type":"set_preset","preset":"mode_1或mode_2"}}
+{{"type":"set_preset","preset":"当前tf_card.modes中的模式id","duration_seconds":1到3600的整数}}
 {{"type":"set_led","role":"master或slave_a或slave_b或slave_c","on":true或false}}
 规则：
-1. 自己判断意图：普通交流用 chat；设备操作或设备状态用 control；当前日期时间用 time；实时天气用 weather。
+1. 自己判断意图：日常聊天、知识问答、项目解释、排障和建议都用 chat；设备操作或设备实时状态用 control；当前日期时间用 time；实时天气用 weather。
 2. chat、time、weather 的 actions 必须为空。time 必须依据当前状态中的 local_time 回答，不要猜测。
 3. weather 只提取城市到 weather_city，reply 先写一句简短过渡；不要凭模型知识编造实时天气。没有城市时 weather_city=null，并请用户补充城市。
 4. 用户要控制任一灯时，如果当前是 automatic，先加入 set_mode=manual，再加入灯动作。
-5. 用户说开启自动检测、阈值检测或自动模式时，只设置 automatic，不再设置单灯。用户说模式 1 或模式 2 时，只返回对应的 set_preset 动作。
-6. 用户只问设备状态时使用 control，actions 返回空数组，并根据当前状态回答。
-7. 不允许修改阈值、网络、ADC、采样率或执行动作白名单之外的任何操作；用户提出这些要求时，使用 chat 意图并只回复“不支持当前功能。”。
-8. 回复像自然对话：直接回答，不说“已为您”“操作成功”“有什么需要尽管说”等模板话，不复述用户整句话，不虚构信息。
-9. 控制意图只简短确认理解，例如“好，B 灯打开。”，不要声称硬件已经完成；真实执行结果由后端单独显示。
+5. 用户说开启自动检测、阈值检测或自动模式时，只设置 automatic，不再设置单灯。用户要执行某个卡内模式且给出了时间时，使用实时模式 id 和本次秒数生成 set_preset。
+6. 用户想执行模式却没有说明时间时，不生成动作，自然询问这次要运行多少秒；不要擅自采用卡内旧字段或固定默认值。
+7. 用户提到自定义模式名称时，从 tf_card.modes 按名称查找；找不到才说明当前卡内没有该模式，并可列出现有模式。
+8. 用户只问设备、TF 卡、ADC、网络、接线、代码结构或系统原理时，直接依据项目知识和当前状态解释，不要把知识问答误判成不可执行功能。
+9. 对任何普通聊天和一般知识问题都尽力正常回答。安全白名单只限制你能执行的硬件动作，不限制你回答问题。绝对不要仅因为没有对应动作而回复“不支持当前功能”。
+10. 用户要求当前系统确实无法执行的动作时，清楚说明具体做不到哪一步，并尽量给出可行替代；不要使用笼统的“不支持当前功能”。
+11. 不得声称已经执行白名单之外的硬件、文件、网络或系统操作，也不得虚构实时数据。可以解释如何实现或修改它们。
+12. 回复像自然对话：直接回答，不说“已为您”“操作成功”“有什么需要尽管说”等模板话，不复述用户整句话。
+13. 控制意图只简短确认理解，例如“好，B 灯打开。”，不要声称硬件已经完成；真实执行结果由后端单独显示。
 """
 
 
@@ -99,18 +115,18 @@ def normalize_history(history):
     if history is None:
         return []
     if not isinstance(history, list):
-        raise AssistantError(UNSUPPORTED_FUNCTION_MESSAGE)
+        raise AssistantError("对话记录格式不正确，请刷新网页后重试。")
     # normalized_history 只保留用户和助手的纯文本消息。
     normalized_history = []
     for item in history[-MAX_HISTORY_MESSAGES:]:
         if not isinstance(item, dict):
-            raise AssistantError(UNSUPPORTED_FUNCTION_MESSAGE)
+            raise AssistantError("对话记录格式不正确，请刷新网页后重试。")
         # role 是历史消息的发言方。
         role = item.get("role")
         # content 是经过清理的历史消息正文。
         content = item.get("content")
         if role not in {"user", "assistant"} or not isinstance(content, str):
-            raise AssistantError(UNSUPPORTED_FUNCTION_MESSAGE)
+            raise AssistantError("对话记录格式不正确，请刷新网页后重试。")
         content = content.strip()
         if not content or len(content) > 500:
             raise AssistantError("对话历史消息为空或过长。")
@@ -155,7 +171,7 @@ def call_deepseek(messages, temperature=0.35):
         content = response_data["choices"][0]["message"]["content"]
         return json.loads(content)
     except (KeyError, IndexError, TypeError, json.JSONDecodeError) as error:
-        raise AssistantError(UNSUPPORTED_FUNCTION_MESSAGE) from error
+        raise AssistantError(INVALID_ASSISTANT_RESPONSE) from error
 
 
 # 调用 DeepSeek，让模型判断意图并返回受限执行计划。
@@ -173,7 +189,7 @@ def request_control_plan(message, state, history=None):
         *normalize_history(history),
         {"role": "user", "content": normalized_message},
     ]
-    return call_deepseek(messages)
+    return call_deepseek(messages, temperature=0.55)
 
 
 # request_weather_reply 让模型把可信天气数据整理成自然、简短的回答。
@@ -198,14 +214,16 @@ def request_weather_reply(message, weather_data):
     # reply 是最终显示和朗读的中文内容。
     reply = response.get("reply") if isinstance(response, dict) else None
     if not isinstance(reply, str) or not reply.strip() or len(reply) > 700:
-        raise AssistantError(UNSUPPORTED_FUNCTION_MESSAGE)
+        raise AssistantError(INVALID_ASSISTANT_RESPONSE)
     return reply.strip()
 
 
 # 严格校验模型提出的动作，任何未知字段或取值都不会执行。
-def validate_control_plan(plan):
+def validate_control_plan(plan, allowed_presets=None):
+    # allowed_presets 是本轮从 TF 卡实时同步出的模式编号集合。
+    allowed_presets = set(allowed_presets or [])
     if not isinstance(plan, dict):
-        raise AssistantError(UNSUPPORTED_FUNCTION_MESSAGE)
+        raise AssistantError(INVALID_ASSISTANT_RESPONSE)
     # reply 是显示在对话框中的中文回复。
     reply = plan.get("reply")
     # actions 是待执行的模式或灯光操作列表。
@@ -215,31 +233,40 @@ def validate_control_plan(plan):
     # weather_city 是天气查询需要的城市名，其他意图应为空。
     weather_city = plan.get("weather_city")
     if intent not in ALLOWED_INTENTS:
-        raise AssistantError(UNSUPPORTED_FUNCTION_MESSAGE)
+        raise AssistantError(INVALID_ASSISTANT_RESPONSE)
     if not isinstance(reply, str) or not reply.strip():
-        raise AssistantError(UNSUPPORTED_FUNCTION_MESSAGE)
-    if len(reply) > 500:
-        raise AssistantError(UNSUPPORTED_FUNCTION_MESSAGE)
+        raise AssistantError(INVALID_ASSISTANT_RESPONSE)
+    if len(reply) > 900:
+        raise AssistantError("这次回答太长了，请把问题缩小一点再试。")
     if not isinstance(actions, list) or len(actions) > MAX_ACTIONS:
-        raise AssistantError(UNSUPPORTED_FUNCTION_MESSAGE)
+        raise AssistantError(INVALID_ASSISTANT_RESPONSE)
     if intent != "control" and actions:
-        raise AssistantError(UNSUPPORTED_FUNCTION_MESSAGE)
+        raise AssistantError("这条回答包含了不应执行的动作，因此没有操作设备。")
     if weather_city is not None and (not isinstance(weather_city, str) or len(weather_city.strip()) > 80):
-        raise AssistantError(UNSUPPORTED_FUNCTION_MESSAGE)
+        raise AssistantError(INVALID_ASSISTANT_RESPONSE)
     if intent != "weather" and weather_city is not None:
-        raise AssistantError(UNSUPPORTED_FUNCTION_MESSAGE)
+        raise AssistantError(INVALID_ASSISTANT_RESPONSE)
 
     # validated_actions 只保存通过白名单校验的动作。
     validated_actions = []
     for action in actions:
         if not isinstance(action, dict):
-            raise AssistantError(UNSUPPORTED_FUNCTION_MESSAGE)
+            raise AssistantError("AI 返回了无法安全执行的动作，设备未改变。")
         # action_type 表示切换模式或设置 LED。
         action_type = action.get("type")
         if action_type == "set_mode" and action.get("mode") in ALLOWED_MODES:
             validated_actions.append({"type": action_type, "mode": action["mode"]})
-        elif action_type == "set_preset" and action.get("preset") in ALLOWED_PRESETS:
-            validated_actions.append({"type": action_type, "preset": action["preset"]})
+        elif (
+            action_type == "set_preset"
+            and action.get("preset") in allowed_presets
+            and isinstance(action.get("duration_seconds"), int)
+            and not isinstance(action.get("duration_seconds"), bool)
+            and 1 <= action["duration_seconds"] <= 3600
+        ):
+            validated_actions.append({
+                "type": action_type, "preset": action["preset"],
+                "duration_seconds": action["duration_seconds"],
+            })
         elif (
             action_type == "set_led"
             and action.get("role") in ALLOWED_ROLES
@@ -249,7 +276,7 @@ def validate_control_plan(plan):
                 {"type": action_type, "role": action["role"], "on": action["on"]}
             )
         else:
-            raise AssistantError(UNSUPPORTED_FUNCTION_MESSAGE)
+            raise AssistantError("这项设备操作目前无法安全执行，其他问题仍可以继续问我。")
     return {
         "intent": intent,
         "reply": reply.strip(),
