@@ -9,6 +9,7 @@ void tftDisplayBegin();
 void tftDisplayShowTfCardTest(bool mounted, bool readWritePassed,
                               uint32_t capacityMb, uint16_t rootEntryCount);
 
-// 定时刷新 Wi-Fi、A 从机 ADC、检测模式及 A/B/C 灯状态。
-void tftDisplayUpdate(uint32_t now, uint16_t adcRaw, bool thresholdEnabled,
-                      bool slaveLedA, bool slaveLedB, bool slaveLedC);
+// 定时刷新 Wi-Fi、INA219 电流、检测模式及 A/B/C 灯状态。
+void tftDisplayUpdate(uint32_t now, float currentMa, bool ina219Ready,
+                      bool thresholdEnabled, bool slaveLedA,
+                      bool slaveLedB, bool slaveLedC);

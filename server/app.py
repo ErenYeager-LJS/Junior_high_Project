@@ -1,5 +1,6 @@
 from collections import deque
 from datetime import datetime, timedelta, timezone
+from math import isfinite
 from pathlib import Path
 from threading import Lock
 from time import time
@@ -74,7 +75,8 @@ devices = {
     role: {
         "led": None, "last_seen_epoch": None, "device_ip": None,
         "rssi": None, "uptime_ms": None, "adc_latest": None,
-        "sample_interval_us": None, "alert": False,
+        "sample_interval_us": None, "current_ma": None,
+        "ina219_ready": False, "alert": False,
     }
     for role in DEVICE_ROLES
 }
@@ -239,6 +241,8 @@ def device_config(role):
         "slave_over_threshold": slave_over_threshold(),
         "automatic_led": automatic_led(),
         "slave_adc_raw": devices["slave_a"]["adc_latest"] or 0,
+        "slave_current_ma": devices["slave_a"]["current_ma"] or 0.0,
+        "ina219_ready": devices["slave_a"]["ina219_ready"],
         "slave_a_led": devices["slave_a"]["led"] is True,
         "slave_b_led": devices["slave_b"]["led"] is True,
         "slave_c_led": devices["slave_c"]["led"] is True,
@@ -354,6 +358,10 @@ def update_device_status():
     samples = payload.get("adc_samples", [])
     # interval 是相邻采样之间的目标微秒数。
     interval = payload.get("sample_interval_us")
+    # current_ma 是从机 A 的 INA219 实时电流，单位为毫安。
+    current_ma = payload.get("current_ma")
+    # ina219_ready 表示从机 A 是否已经找到传感器并读到有效值。
+    ina219_ready = payload.get("ina219_ready", False)
     if role != "slave_a" and samples:
         return jsonify(error="only slave_a may send ADC samples"), 400
     if not isinstance(samples, list) or len(samples) > 600:
@@ -362,6 +370,14 @@ def update_device_status():
         return jsonify(error="ADC values must be integers from 0 to 1023"), 400
     if samples and (not isinstance(interval, int) or not 500 <= interval <= 1000000):
         return jsonify(error="sample_interval_us must be from 500 to 1000000"), 400
+    if current_ma is not None and (
+        role != "slave_a" or isinstance(current_ma, bool)
+        or not isinstance(current_ma, (int, float)) or not isfinite(current_ma)
+        or not -5000.0 <= current_ma <= 5000.0
+    ):
+        return jsonify(error="current_ma must be a finite slave_a value from -5000 to 5000"), 400
+    if not isinstance(ina219_ready, bool):
+        return jsonify(error="ina219_ready must be a JSON boolean"), 400
 
     # now 是服务器收到本次上报的 Unix 时间戳。
     now = time()
@@ -375,6 +391,8 @@ def update_device_status():
             rssi=payload.get("rssi"), uptime_ms=payload.get("uptime_ms"),
             adc_latest=samples[-1] if samples else devices[role]["adc_latest"],
             sample_interval_us=interval if samples else devices[role]["sample_interval_us"],
+            current_ma=float(current_ma) if current_ma is not None else devices[role]["current_ma"],
+            ina219_ready=ina219_ready if role == "slave_a" else False,
             alert=bool(payload.get("alert", False)),
         )
         for index, value in enumerate(samples):

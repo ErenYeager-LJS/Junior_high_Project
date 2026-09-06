@@ -1,7 +1,9 @@
 #include <Arduino.h>
 
-#include "adc_sampler.h"
 #include "device_config.h"
+#if !DEVICE_ROLE_MASTER && DEVICE_SLAVE_INDEX == 0
+#include "ina219_sensor.h"
+#endif
 #include "led_control.h"
 #include "server_client.h"
 #if DEVICE_ROLE_MASTER
@@ -13,12 +15,13 @@
 
 namespace {
 // config 保存网页下发的阈值开关、手动灯状态和从机阈值结果。
-DeviceConfig config = {true, false, false, 614, 0, false, false, false, false, 0, "", ""};
+DeviceConfig config = {true, false, false, 614, 0, 0.0F, false,
+                       false, false, false, false, 0, "", ""};
 // lastStatusReport 记录上次上报本机状态的系统毫秒数。
 uint32_t lastStatusReport = 0;
 }
 
-// 根据当前编译角色初始化对应的 LED、ADC 和网络。
+// 根据当前编译角色初始化对应的 LED、INA219 和网络。
 void setup() {
   Serial.begin(UART0_BAUD_RATE);
 #if DEVICE_ROLE_MASTER
@@ -33,8 +36,10 @@ void setup() {
 #else
   ledBegin(SLAVE_LED_PIN, SLAVE_LED_ACTIVE_HIGH);
 #if DEVICE_SLAVE_INDEX == 0
-  adcBegin(micros());
-  Serial.println("Role: slave A, LED: GPIO4 active LOW, ADC: A0");
+  // 从机 A 按实物接线初始化 GPIO2/GPIO14 上的 INA219。
+  const bool inaReady = ina219Begin();
+  Serial.println("Role: slave A, INA219 SDA=GPIO2 SCL=GPIO14, LED: GPIO4 active LOW");
+  Serial.println(inaReady ? "[INA219] READY at 0x40" : "[INA219] NOT FOUND");
 #elif DEVICE_SLAVE_INDEX == 1
   Serial.println("Role: slave B, LED: GPIO4 active LOW, ADC: disabled");
 #else
@@ -55,7 +60,8 @@ void loop() {
   const bool masterLedTarget = config.thresholdEnabled ? config.slaveOverThreshold : config.manualLed;
   ledSet(masterLedTarget);
   // 主机 TFT 显示服务端返回的 A0、阈值、网络和四盏灯状态。
-  tftDisplayUpdate(now, config.slaveAdcRaw, config.thresholdEnabled,
+  tftDisplayUpdate(now, config.slaveCurrentMa, config.ina219Ready,
+                   config.thresholdEnabled,
                    config.slaveLedA, config.slaveLedB, config.slaveLedC);
   // 只有自动模式且超过阈值时，主机才向网页报告警消息。
   const bool alertActive = config.thresholdEnabled && config.slaveOverThreshold;
@@ -66,16 +72,25 @@ void loop() {
                              config.tfCommandRecord);
   }
 #else
-  // 只有 A 从机持续采集 A0，数据由 adc_sampler 模块暂存。
 #if DEVICE_SLAVE_INDEX == 0
-  adcUpdate(micros());
+  // 从机 A 周期读取 INA219，同时保留原有 GPIO4 LED 控制。
+  ina219Update(now);
 #endif
-  // 自动模式三块从机都跟随 A 的阈值结果；手动模式使用各自网页状态。
+  // 三个从机仍按原有自动或手动模式控制低电平 LED。
   const bool slaveLedTarget = config.thresholdEnabled ? config.automaticLed : config.manualLed;
   ledSet(slaveLedTarget);
   if (now - lastStatusReport >= STATUS_REPORT_INTERVAL_MS) {
     lastStatusReport = now;
-    serverReportSlave(ledIsOn(), config);
+#if DEVICE_SLAVE_INDEX == 0
+    // currentMa 是本轮即将打印并上报的 INA219 实时电流。
+    const float currentMa = ina219CurrentMa();
+    Serial.print("[INA219] Current: ");
+    Serial.print(currentMa, 2);
+    Serial.println(" mA");
+    serverReportSlave(ledIsOn(), ina219IsReady(), currentMa, config);
+#else
+    serverReportSlave(ledIsOn(), false, 0.0F, config);
+#endif
   }
 #endif
 

@@ -24,6 +24,10 @@ constexpr uint8_t TF_CARD_CS_PIN = 4;
 constexpr uint32_t TF_CARD_SPI_FREQUENCY = 4000000;
 // 从机使用 GPIO4，对应开发板常见的 D2 引脚。
 constexpr uint8_t SLAVE_LED_PIN = 4;
+// 从机 A 的 INA219 按实物接线使用 GPIO2 作为 I2C 数据线。
+constexpr uint8_t INA219_SDA_PIN = 2;
+// 从机 A 的 INA219 按实物接线使用 GPIO14 作为 I2C 时钟线。
+constexpr uint8_t INA219_SCL_PIN = 14;
 // 主机和从机的 LED 都在 GPIO 输出低电平时点亮。
 constexpr bool MASTER_LED_ACTIVE_HIGH = false;
 constexpr bool SLAVE_LED_ACTIVE_HIGH = false;
@@ -31,6 +35,8 @@ constexpr bool SLAVE_LED_ACTIVE_HIGH = false;
 constexpr uint32_t ADC_SAMPLE_INTERVAL_US = 1000;
 // 四块设备每 500 ms 向 Flask 上报一次自身状态。
 constexpr uint32_t STATUS_REPORT_INTERVAL_MS = 500;
+// INA219 每 100 ms 更新一次电流，足以快速观察 0.1 A 稳定输入。
+constexpr uint32_t INA219_SAMPLE_INTERVAL_MS = 100;
 // 主机 TFT 每 500 ms 更新一次，避免频繁绘图占用主循环。
 constexpr uint32_t TFT_REFRESH_INTERVAL_MS = 500;
 // ESP8266 裸芯片 A0 的参考满量程为 1.0 V，用于屏幕电压换算。

@@ -4,7 +4,6 @@
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h>
 
-#include "adc_sampler.h"
 #include "device_config.h"
 #if DEVICE_ROLE_MASTER
 #include "tf_mode_store.h"
@@ -45,6 +44,19 @@ uint16_t readUnsigned(const String& body, const char* name, uint16_t fallback) {
   return static_cast<uint16_t>(body.substring(colon + 1).toInt());
 }
 
+// 从简单 JSON 文本中读取浮点数；字段不存在时返回 fallback。
+float readFloat(const String& body, const char* name, float fallback) {
+  // key 保存带双引号字段名的文本。
+  const String key = String("\"") + name + "\"";
+  // position 是字段名在 JSON 中的位置。
+  const int position = body.indexOf(key);
+  if (position < 0) return fallback;
+  // colon 是字段名后冒号的位置。
+  const int colon = body.indexOf(':', position + key.length());
+  if (colon < 0) return fallback;
+  return body.substring(colon + 1).toFloat();
+}
+
 // 从简单 JSON 文本中读取不含引号和反斜杠的字符串字段。
 String readString(const String& body, const char* name, const String& fallback) {
   // key 保存带双引号字段名的文本。
@@ -76,6 +88,8 @@ void updateConfig(const String& body, DeviceConfig& config) {
   config.slaveOverThreshold = readBool(body, "slave_over_threshold", config.slaveOverThreshold);
   config.thresholdRaw = readUnsigned(body, "threshold_raw", config.thresholdRaw);
   config.slaveAdcRaw = readUnsigned(body, "slave_adc_raw", config.slaveAdcRaw);
+  config.slaveCurrentMa = readFloat(body, "slave_current_ma", config.slaveCurrentMa);
+  config.ina219Ready = readBool(body, "ina219_ready", config.ina219Ready);
   config.automaticLed = readBool(body, "automatic_led", config.automaticLed);
   config.slaveLedA = readBool(body, "slave_a_led", config.slaveLedA);
   config.slaveLedB = readBool(body, "slave_b_led", config.slaveLedB);
@@ -129,11 +143,12 @@ bool serverFetchConfig(const char* role, DeviceConfig& config) {
   return true;
 }
 
-// 从机把环形缓冲区中的 ADC 数据按时间顺序写入 JSON 后发送。
-bool serverReportSlave(bool ledOn, DeviceConfig& config) {
+// 从机上报灯状态；从机 A 同时发送 INA219 实时电流。
+bool serverReportSlave(bool ledOn, bool ina219Ready, float currentMa,
+                       DeviceConfig& config) {
   // payload 保存本次 POST 的完整 JSON 文本。
   String payload;
-  payload.reserve(3500);
+  payload.reserve(240);
   // roleName 根据编译编号区分 A、B、C 三块从机。
 #if DEVICE_SLAVE_INDEX == 0
   const char* roleName = "slave_a";
@@ -144,27 +159,17 @@ bool serverReportSlave(bool ledOn, DeviceConfig& config) {
 #endif
   appendCommonStatus(payload, roleName, ledOn);
 #if DEVICE_SLAVE_INDEX == 0
-  payload += ",\"sample_interval_us\":" + String(ADC_SAMPLE_INTERVAL_US) + ",\"adc_samples\":[";
-  // count 固定本次要发送的数量，避免循环期间变化。
-  const size_t count = adcCount();
-  // index 表示当前追加的是第几个采样值。
-  for (size_t index = 0; index < count; ++index) {
-    if (index > 0) payload += ',';
-    payload += String(adcAt(index));
-  }
-  payload += "]}";
+  payload += String(",\"ina219_ready\":") + (ina219Ready ? "true" : "false");
+  payload += ",\"current_ma\":" + String(currentMa, 2) + "}";
 #else
-  // B、C 暂不使用 ADC，只发送灯状态和在线信息。
+  // B、C 没有 INA219，只发送灯状态和在线信息。
   payload += "}";
 #endif
   // responseBody 接收 Flask 随状态响应返回的最新控制配置。
   String responseBody;
   // success 表示服务端是否确认接收。
   const bool success = postStatus(payload, responseBody);
-  if (success) {
-    adcClear();
-    updateConfig(responseBody, config);
-  }
+  if (success) updateConfig(responseBody, config);
   return success;
 }
 

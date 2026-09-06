@@ -14,6 +14,10 @@ struct DeviceConfig {
   uint16_t thresholdRaw;
   // slaveAdcRaw 是服务端保存的从机最新 A0 原始值。
   uint16_t slaveAdcRaw;
+  // slaveCurrentMa 是服务端转发给主机的从机 A 实时电流，单位为毫安。
+  float slaveCurrentMa;
+  // ina219Ready 表示从机 A 的 INA219 当前可以正常读数。
+  bool ina219Ready;
   // automaticLed 是自动模式下所有从机跟随的 A 从机灯状态。
   bool automaticLed;
   // slaveLedA 保存 A 从机的实际灯状态，供主机 TFT 使用。
@@ -32,7 +36,8 @@ struct DeviceConfig {
 
 // 从 Flask 获取指定角色的最新控制配置。
 bool serverFetchConfig(const char* role, DeviceConfig& config);
-// 从机上报状态，并从响应中更新网页配置。
-bool serverReportSlave(bool ledOn, DeviceConfig& config);
+// 从机上报状态和 INA219 读数，并从响应中更新控制配置。
+bool serverReportSlave(bool ledOn, bool ina219Ready, float currentMa,
+                       DeviceConfig& config);
 // 主机上报状态和报警，并从响应中更新网页配置。
 bool serverReportMaster(bool ledOn, bool alert, DeviceConfig& config);

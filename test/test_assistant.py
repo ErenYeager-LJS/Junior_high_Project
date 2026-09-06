@@ -136,6 +136,19 @@ class AssistantEndpointTests(unittest.TestCase):
             {"master": True, "slave_a": False, "slave_b": False, "slave_c": False},
         )
 
+    # test_ina219_current_reaches_master_config 确认从机 A 电流会转发给主机。
+    def test_ina219_current_reaches_master_config(self):
+        # report 模拟 INA219 在 0.1 A 稳定输入下的真实上报。
+        report = self.client.post("/api/device-status", json={
+            "role": "slave_a", "led": False, "ina219_ready": True,
+            "current_ma": 100.25,
+        })
+        self.assertEqual(report.status_code, 200)
+        # master_config 是主机下一轮收到并交给 TFT 的配置。
+        master_config = self.client.get("/api/device-config/master").get_json()
+        self.assertTrue(master_config["ina219_ready"])
+        self.assertAlmostEqual(master_config["slave_current_ma"], 100.25)
+
     # test_same_mode_accepts_different_run_times 确认同一组合每次都能使用不同时间。
     def test_same_mode_accepts_different_run_times(self):
         # first 是第一次让模式 1 运行 2 秒的响应。
